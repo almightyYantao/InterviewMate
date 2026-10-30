@@ -138,7 +138,7 @@ struct CalendarPage: View {
     var listView: some View {
         let upcoming = events.filter { ($0.endDate ?? .distantPast) > cal.startOfDay(for: Date()) }
         let g = Dictionary(grouping: upcoming) { cal.startOfDay(for: $0.startDate ?? .distantPast) }
-        return ScrollView {
+        return ScrollViewReader { proxy in ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 if upcoming.isEmpty {
                     ContentUnavailableView(showAll ? "近期没有日程" : "近期没有对上候选人的面试", systemImage: "calendar").emptyStateLayout()
@@ -146,11 +146,14 @@ struct CalendarPage: View {
                 ForEach(g.keys.sorted(), id: \.self) { day in
                     VStack(alignment: .leading, spacing: 8) {
                         Text(dayTitle(day)).font(.headline).foregroundStyle(cal.isDateInToday(day) ? Theme.brand : .secondary)
-                        ForEach(g[day]!.sorted { $0.start < $1.start }) { EventRow(e: $0, r: r) }
+                        ForEach(g[day]!.sorted { $0.start < $1.start }) { EventRow(e: $0, r: r).id($0.id) }
                     }
                 }
             }
             .frame(maxWidth: 1000, alignment: .leading).frame(maxWidth: .infinity)
+        }
+        .onAppear { if let f = store.focusEventID { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { withAnimation { proxy.scrollTo(f, anchor: .top) } } } }
+        .onChange(of: store.focusEventID) { if let f = store.focusEventID { withAnimation { proxy.scrollTo(f, anchor: .top) } } }
         }
     }
 
@@ -341,6 +344,7 @@ struct MonthGrid: View {
 // MARK: - 列表行
 
 struct EventRow: View {
+    @EnvironmentObject var store: Store
     let e: CalEvent
     @ObservedObject var r: InterviewReminder
     @State private var hover = false
@@ -386,6 +390,8 @@ struct EventRow: View {
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(open ? Theme.brand.opacity(0.3) : .clear))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .opacity(past && !open ? 0.55 : 1)
+        .onAppear { if store.focusEventID == e.id { open = true } }
+        .onChange(of: store.focusEventID) { if store.focusEventID == e.id { withAnimation(.spring(response: 0.35)) { open = true } } }
         .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover = h } }
     }
 }

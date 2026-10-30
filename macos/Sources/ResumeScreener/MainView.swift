@@ -12,7 +12,6 @@ struct MainView: View {
             DetailRoot()
         }
         .overlay(alignment: .bottomTrailing) { ResumeInbox(w: store.watcher) }
-        .overlay { EventDetailOverlay() }
         .coordinateSpace(name: "main")
         .ignoresSafeArea()
         .background(Color.white)

@@ -27,7 +27,8 @@ final class Store: ObservableObject {
     @Published var showInsights = false
     @Published var detailAnchor: CGRect = .zero   // 被点的日程在窗口里的位置，卡片贴着它弹出
     var detailTap: CGPoint = .zero
-    @Published var detailEvent: CalEvent?     // 正在看详情的日程（App 自绘弹窗，点背景关闭）
+    @Published var detailEvent: CalEvent?
+    @Published var focusEventID: String?        // 从侧边栏 / 日历格子点进来要展开的日程     // 正在看详情的日程（App 自绘弹窗，点背景关闭）
 
     /// 直接打开某个候选人的报告（可能在别的岗位下）
     func openCandidate(_ pid: String, _ cid: String) {

@@ -217,28 +217,22 @@ struct EventDetailOverlay: View {
     func dismiss() { withAnimation(.easeIn(duration: 0.15)) { store.detailEvent = nil } }
 }
 
+/// 点日程：不再弹浮层。切到「面试日历 › 列表」，把这一条在原位展开
 struct EventPopover: ViewModifier {
     let e: CalEvent
     @ObservedObject var r: InterviewReminder
     var edge: Edge = .trailing
     @EnvironmentObject var store: Store
-    @State private var frame: CGRect = .zero
-    @State private var pointer: CGPoint?
     func body(content: Content) -> some View {
-        // 用按钮响应点击（手势会和外层列表 / 月视图的双击抢事件，第一下容易被吞）
         Button {
-            store.detailAnchor = frame
-            let p = pointer ?? CGPoint(x: frame.width / 2, y: frame.height / 2)
-            store.detailTap = CGPoint(x: frame.minX + p.x, y: frame.minY + p.y)
-            withAnimation(.easeOut(duration: 0.2)) { store.detailEvent = e }
-        } label: {
-            content.contentShape(Rectangle())
-        }
+            UserDefaults.standard.set("list", forKey: "calMode")
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) {
+                store.showCalendar = true; store.showHiBob = false; store.showInsights = false; store.showCompare = false
+                store.selectedCandidateID = nil
+                store.focusEventID = e.id
+            }
+        } label: { content.contentShape(Rectangle()) }
         .buttonStyle(.plain)
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("main")) } action: { frame = $0 }
-        .onContinuousHover { phase in
-            if case .active(let p) = phase { pointer = p }
-        }
     }
 }
 
