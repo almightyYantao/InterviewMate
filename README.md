@@ -12,7 +12,13 @@
 
 ## 截图
 
-> 截图待补（需用演示数据截取，避免出现真实候选人信息）。
+截图使用虚构的演示数据（张三、李四、王五）。
+
+| 候选人列表 | 筛选报告 |
+|---|---|
+| ![候选人](docs/screens/gallery.png) | ![报告](docs/screens/report.png) |
+| **岗位看板** | **候选人对比** |
+| ![看板](docs/screens/board.png) | ![对比](docs/screens/compare.png) |
 
 ## 功能
 

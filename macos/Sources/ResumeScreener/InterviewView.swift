@@ -37,7 +37,8 @@ struct InterviewView: View {
                 rail
                 Rectangle().fill(Color.black.opacity(0.06)).frame(width: 1)
                 ZStack {
-                    if finished { summary.transition(.opacity.combined(with: .scale(scale: 0.98))) }
+                    if questions.isEmpty { ContentUnavailableView("这份报告没有面试题", systemImage: "list.bullet.rectangle", description: Text("先在报告里重新出题")) }   // 防止空题目时越界崩溃
+                    else if finished { summary.transition(.opacity.combined(with: .scale(scale: 0.98))) }
                     else { questionPage.id(index).transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: 24)), removal: .opacity)) }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

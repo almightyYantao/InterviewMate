@@ -79,7 +79,7 @@ struct CandidateGallery: View {
                 HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(store.selectedPosition?.title ?? "").font(.system(size: 30, weight: .bold))
-                    Text("\(store.selectedPosition?.jdStruct?.requirements?.count ?? 0) 条 JD 要求 · 面试 \(store.selectedPosition?.interviewMinutes ?? 60) 分钟")
+                    Text("\(store.selectedPosition?.jdStruct?.requirements?.count ?? 0) 条 JD 要求 · 面试 \(store.selectedPosition?.interviewMinutes ?? 60) 分钟").lineLimit(1).fixedSize()
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -203,11 +203,12 @@ struct StatTile: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text(value).font(.system(size: 22, weight: .bold)).monospacedDigit().contentTransition(.numericText())
                 Text(L(title)).font(.callout).foregroundStyle(.secondary)
+                    .lineLimit(1).minimumScaleFactor(0.75)   // 不换行，英文长一点就缩小
             }
             Spacer(minLength: 0)
         }
         .padding(14)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, minHeight: 72, maxHeight: 72)   // 所有统计卡同高
         .background(Theme.page, in: RoundedRectangle(cornerRadius: 14))
     }
 }

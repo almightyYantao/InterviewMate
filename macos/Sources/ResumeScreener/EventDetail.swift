@@ -8,6 +8,7 @@ struct EventDetail: View {
     let e: CalEvent
     @ObservedObject var r: InterviewReminder
     var close: () -> Void = {}
+    var inline = false            // 列表里就地展开：占满宽度、不要白底卡片
     @State private var cand: Candidate?
     @State private var copied = false
 
@@ -92,7 +93,8 @@ struct EventDetail: View {
             }
         }
         .padding(22)
-        .frame(width: 440)
+        .frame(width: inline ? nil : 440)
+        .frame(maxWidth: inline ? .infinity : nil)
         .background(Color.white)
         .task {
             guard let pid = e.positionId, let cid = e.candidateId else { return }

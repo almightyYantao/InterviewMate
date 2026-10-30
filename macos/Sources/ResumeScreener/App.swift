@@ -60,7 +60,7 @@ struct RootView: View {
         case .failed(let msg):
             ContentUnavailableView("无法启动", systemImage: "exclamationmark.triangle", description: Text(msg))
         case .ready:
-            MainView().task { await store.loadPositions() }
+            MainView().task { await store.loadPositions(); await store.applyDemo() }
         }
     }
 }

@@ -12,3 +12,4 @@ macos/icon/AppIcon.iconset/
 *.app
 .DS_Store
 *.log
+.demo/

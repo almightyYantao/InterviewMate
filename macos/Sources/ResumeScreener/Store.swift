@@ -109,6 +109,31 @@ final class Store: ObservableObject {
         }
     }
 
+    /// 截图用：环境变量 SCREENER_DEMO=gallery|board|compare|interview|report:<tab> 打开指定页面
+    func applyDemo() async {
+        guard let mode = ProcessInfo.processInfo.environment["SCREENER_DEMO"] else { return }
+        UserDefaults.standard.set(mode == "board" ? "board" : "cards", forKey: "galleryMode")
+        try? await Task.sleep(for: .seconds(1.5))
+        await loadCandidates()
+        let done = candidates.filter { $0.status == "done" }.sorted { $0.scoreSort > $1.scoreSort }
+        if mode == "compare" { compareIDs = done.map(\.id); showCompare = true }
+        if mode.hasPrefix("report") || mode == "interview", let c = done.first {
+            selectedCandidateID = c.id
+            reportTab = Int(mode.split(separator: ":").last ?? "0") ?? 0
+            if mode == "interview" { pendingInterview = true }
+        }
+        // SCREENER_SHOT=路径：几秒后把窗口内容存成 PNG 并退出（不需要录屏权限）
+        if let path = ProcessInfo.processInfo.environment["SCREENER_SHOT"] {
+            try? await Task.sleep(for: .seconds(6))
+            let win = NSApp.windows.filter { $0.isVisible }.max { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
+            if let v = (win?.attachedSheet ?? win)?.contentView, let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) {
+                v.cacheDisplay(in: v.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+            }
+            NSApp.terminate(nil)
+        }
+    }
+
     func loadPositions() async {
         guard let backend else { return }
         do {
@@ -116,7 +141,7 @@ final class Store: ObservableObject {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) { positions = ps }
             if settings == nil { settings = try? await backend.settings() }
             hibobConnected = (try? await backend.hibobStatus().connected) ?? false
-            reminder.start(store: self, backend: backend)
+            if ProcessInfo.processInfo.environment["SCREENER_DEMO"] == nil { reminder.start(store: self, backend: backend) }   // 截图时不读真实日历
             watcher.start()
             if selectedPositionID == nil { selectedPositionID = positions.first?.id }
         } catch { errorMessage = error.localizedDescription }

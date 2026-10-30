@@ -344,9 +344,11 @@ struct EventRow: View {
     let e: CalEvent
     @ObservedObject var r: InterviewReminder
     @State private var hover = false
+    @State private var open = false
     var past: Bool { (e.endDate ?? e.startDate ?? .distantFuture) < Date() }
 
     var body: some View {
+        VStack(spacing: 0) {
         HStack(spacing: 14) {
             Text(e.startDate.map { $0.formatted(.dateTime.hour().minute()) } ?? "")
                 .font(.system(size: 15, weight: .semibold)).monospacedDigit().frame(width: 56, alignment: .leading)
@@ -367,12 +369,23 @@ struct EventRow: View {
             Spacer(minLength: 10)
             MeetingButton(e: e)
             Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                .rotationEffect(.degrees(open ? 90 : 0))
         }
         .frame(minHeight: 44)
         .padding(12)
-        .background(hover ? Color.white : Theme.page, in: RoundedRectangle(cornerRadius: 12))
-        .opacity(past ? 0.55 : 1)
-        .eventPopover(e, r, edge: .bottom)
+        .contentShape(Rectangle())
+        .onTapGesture { withAnimation(.spring(response: 0.35, dampingFraction: 0.88)) { open.toggle() } }
+        // 列表里点一行就在下面展开详情，不弹浮层
+        if open {
+            EventDetail(e: e, r: r, close: { withAnimation(.spring(response: 0.35, dampingFraction: 0.88)) { open = false } }, inline: true)
+                .padding(.horizontal, 4).padding(.bottom, 6)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+        }
+        .background(hover || open ? Color.white : Theme.page, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(open ? Theme.brand.opacity(0.3) : .clear))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .opacity(past && !open ? 0.55 : 1)
         .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover = h } }
     }
 }
