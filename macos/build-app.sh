@@ -20,7 +20,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundleName</key><string>面搭子</string>
 <key>CFBundleDisplayName</key><string>面搭子</string>
-<key>CFBundleIdentifier</key><string>com.longbridge.resume-screener</string>
+<key>CFBundleIdentifier</key><string>com.almightyyantao.interviewmate</string>
 <key>CFBundleExecutable</key><string>ResumeScreener</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.4</string>
