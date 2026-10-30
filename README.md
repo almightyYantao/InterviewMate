@@ -1,10 +1,18 @@
+<p align="center"><img src="docs/banner.png" alt="面搭子 InterviewMate"></p>
+
 # 面搭子 InterviewMate
+
+<p align="center"><img src="https://img.shields.io/badge/macOS-15%2B-blue"> <img src="https://img.shields.io/badge/SwiftUI-Swift%206-orange"> <img src="https://img.shields.io/badge/Python-3.12-3776AB"> <img src="https://img.shields.io/badge/Claude-Opus%20%2F%20Sonnet-D97757"></p>
 
 面试官的 macOS 助手：从读简历、准备面试，到面试中实时提示、面试后出评价，全流程用 Claude 辅助。
 
 输入一份 JD 和一份简历，生成一面准备材料（筛选结论、简历疑点、JD 匹配度、面试题、参考答案、评分标准）；面试时本机实时转写、提示追问；面试后逐题复盘、生成可直接贴进招聘系统的评价。
 
 > AI 生成的内容需要面试官复核，是否推进由面试官决定。出生日期只用于时间线校验，年龄、性别、婚育、籍贯不参与评分和出题。
+
+## 截图
+
+> 截图待补（需用演示数据截取，避免出现真实候选人信息）。
 
 ## 功能
 
