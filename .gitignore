@@ -1,0 +1,14 @@
+.venv/
+.cache/
+data/
+out/
+__pycache__/
+macos/.sign-identity
+fixtures/input/*.pdf
+fixtures/input/*.docx
+.build/
+macos/.build/
+macos/icon/AppIcon.iconset/
+*.app
+.DS_Store
+*.log
