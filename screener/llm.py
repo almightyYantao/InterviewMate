@@ -78,6 +78,7 @@ def call_structured(
     pdf: bytes | None = None,
     meta: list[dict] | None = None,
     max_tokens: int = 64000,
+    json_mode: bool = False,
 ) -> T:
     """system 部分加 cache_control，同一岗位多份简历时可复用缓存。"""
     content: list[dict] = []
@@ -89,6 +90,11 @@ def call_structured(
     messages: list[dict] = [{"role": "user", "content": content}]
 
     model = resolve_model(model)
+    if json_mode:
+        # 题目这种长而深的嵌套结构，用结构化输出约束时模型常交出空壳（字段全空）；改为普通 JSON 再用 pydantic 校验
+        import json as _json
+        system += ("\n\n只输出一个 JSON 对象，符合下面的 JSON Schema，不要任何其他文字、不要代码块：\n"
+                   + _json.dumps(schema.model_json_schema(by_alias=True), ensure_ascii=False))
     if settings().get("ai_language") == "en":
         system += ("\n\nOutput language: write every free-text field in English (translate any Chinese "
                    "examples above). Keep enum / Literal values, IDs and quotes from the resume exactly as given.")
@@ -100,7 +106,7 @@ def call_structured(
             max_tokens=max_tokens,
             system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
             messages=messages,
-            output_format=schema,
+            **({} if json_mode else {"output_format": schema}),
             output_config={"effort": effort},
         ) as stream:
             msg = stream.get_final_message()
@@ -119,10 +125,12 @@ def call_structured(
             last_err = "输出被截断（max_tokens）"
         else:
             try:
-                parsed = msg.parsed_output
+                parsed = None if json_mode else msg.parsed_output
                 if parsed is not None:
                     return parsed
                 text = "".join(b.text for b in msg.content if b.type == "text")
+                if json_mode:
+                    text = text[text.find("{"):text.rfind("}") + 1]
                 return schema.model_validate_json(text)
             except ValidationError as e:
                 last_err = str(e)[:2000]

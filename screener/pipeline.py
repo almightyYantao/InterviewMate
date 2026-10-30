@@ -137,7 +137,7 @@ def gen_questions(jd, doc, match_items, doubts, company_ctx, minutes, meta, prev
                               + (PREV_RULES.format(round=round_no) if previous else ""),
                               user=_q_context(jd, doc, match_items, doubts, company_ctx)
                               + (f"\n<previous_rounds>\n{previous}\n</previous_rounds>" if previous else ""),
-                              schema=QuestionSet, effort="high", meta=meta)
+                              schema=QuestionSet, effort="high", meta=meta, json_mode=True)
         good = [q for q in res.questions if _complete(q)]
         if len(good) > len(best):
             best = good
@@ -152,7 +152,7 @@ def fill_questions(jd, doc, match_items, doubts, company_ctx, existing, miss_d, 
             + f"\n<existing>\n{_dump([q.question for q in existing])}\n</existing>\n<uncovered>\n{_dump(unc)}\n</uncovered>")
     res = call_structured(stage="questions_fill", model=OPUS,
                           system=prompt("questions_fill", position=jd.position, next_id=f"Q{len(existing) + 1:02d}"),
-                          user=user, schema=QuestionSet, effort="high", meta=meta)
+                          user=user, schema=QuestionSet, effort="high", meta=meta, json_mode=True)
     return [q for q in res.questions if _complete(q)]
 
 

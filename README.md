@@ -19,6 +19,8 @@
 | ![候选人](docs/screens/gallery.png) | ![报告](docs/screens/report.png) |
 | **岗位看板** | **候选人对比** |
 | ![看板](docs/screens/board.png) | ![对比](docs/screens/compare.png) |
+| **面试题与参考答案** | |
+| ![面试题](docs/screens/questions.png) | |
 
 ## 功能
 

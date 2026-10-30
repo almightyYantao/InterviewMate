@@ -120,6 +120,7 @@ final class Store: ObservableObject {
         if mode == "compare" { compareIDs = done.map(\.id); showCompare = true }
         if mode.hasPrefix("report") || mode == "interview", let c = done.first {
             selectedCandidateID = c.id
+            try? await Task.sleep(for: .seconds(1))   // 切候选人会把 Tab 重置为概览，等它之后再设
             reportTab = Int(mode.split(separator: ":").last ?? "0") ?? 0
             if mode == "interview" { pendingInterview = true }
         }
