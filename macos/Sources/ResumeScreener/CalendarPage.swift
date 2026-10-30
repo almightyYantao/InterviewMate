@@ -373,12 +373,11 @@ struct EventRow: View {
             Spacer(minLength: 10)
             MeetingButton(e: e)
             Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-                .rotationEffect(.degrees(open ? 90 : 0))
         }
         .frame(minHeight: 44)
         .padding(12)
         .contentShape(Rectangle())
-        .onTapGesture { withAnimation(.spring(response: 0.35, dampingFraction: 0.88)) { open.toggle() } }
+        .onTapGesture { withAnimation(.spring(response: 0.4, dampingFraction: 0.88)) { store.detailEvent = e } }
         // 列表里点一行就在下面展开详情，不弹浮层
         if open {
             EventDetail(e: e, r: r, close: { withAnimation(.spring(response: 0.35, dampingFraction: 0.88)) { open = false } }, inline: true)

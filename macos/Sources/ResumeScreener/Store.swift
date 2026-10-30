@@ -32,7 +32,7 @@ final class Store: ObservableObject {
 
     /// 直接打开某个候选人的报告（可能在别的岗位下）
     func openCandidate(_ pid: String, _ cid: String) {
-        showHiBob = false; showCalendar = false; showCompare = false; compareMode = false; showInsights = false
+        showHiBob = false; showCalendar = false; showCompare = false; compareMode = false; showInsights = false; detailEvent = nil
         if selectedPositionID == pid { selectedCandidateID = cid }
         else { pendingCandidateID = cid; selectedPositionID = pid }
     }

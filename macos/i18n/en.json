@@ -582,5 +582,6 @@
 "各环节问到 / 跳过": "Asked / skipped by section",
 "问了 %lld · 跳过 %lld · 共 %lld": "asked %lld · skipped %lld · of %lld",
 "候选人没答到的要点最多在「%@」（%lld 处）": "Most missed points are in “%@” (%lld)",
-"打分和 AI 不一致的题": "Questions where you and AI differ"
+"打分和 AI 不一致的题": "Questions where you and AI differ",
+"返回": "Back"
 }

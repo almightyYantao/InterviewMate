@@ -127,6 +127,7 @@ struct EventDetail: View {
     }
 
     func go(interview: Bool) {
+        store.detailEvent = nil
         close()
         guard let pid = e.positionId, let cid = e.candidateId else { return }
         // 等这个弹窗收起再跳转，避免紧接着弹出面试窗口时两个弹窗冲突
@@ -217,7 +218,7 @@ struct EventDetailOverlay: View {
     func dismiss() { withAnimation(.easeIn(duration: 0.15)) { store.detailEvent = nil } }
 }
 
-/// 点日程：不再弹浮层。切到「面试日历 › 列表」，把这一条在原位展开
+/// 点日程：打开单独的「面试详情」页
 struct EventPopover: ViewModifier {
     let e: CalEvent
     @ObservedObject var r: InterviewReminder
@@ -225,15 +226,34 @@ struct EventPopover: ViewModifier {
     @EnvironmentObject var store: Store
     func body(content: Content) -> some View {
         Button {
-            UserDefaults.standard.set("list", forKey: "calMode")
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) {
-                store.showCalendar = true; store.showHiBob = false; store.showInsights = false; store.showCompare = false
-                store.selectedCandidateID = nil
-                store.focusEventID = e.id
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.88)) {
+                store.showCompare = false; store.selectedCandidateID = nil
+                store.detailEvent = e
             }
         } label: { content.contentShape(Rectangle()) }
         .buttonStyle(.plain)
     }
+}
+
+/// 面试详情页：返回、详情内容
+struct EventDetailPage: View {
+    @EnvironmentObject var store: Store
+    let e: CalEvent
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                PillButton(title: "返回", symbol: "chevron.left") { back() }
+                    .keyboardShortcut(.cancelAction)
+                EventDetail(e: e, r: store.reminder, close: back, inline: true)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.black.opacity(0.06)))
+            }
+            .padding(.horizontal, 36).padding(.top, 44).padding(.bottom, 32)
+            .frame(maxWidth: 760, alignment: .leading).frame(maxWidth: .infinity)
+        }
+        .background(Theme.page)
+    }
+    func back() { withAnimation(.spring(response: 0.4, dampingFraction: 0.88)) { store.detailEvent = nil } }
 }
 
 extension View {

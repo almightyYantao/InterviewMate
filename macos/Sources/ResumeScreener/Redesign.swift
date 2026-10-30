@@ -14,7 +14,9 @@ struct DetailRoot: View {
 
     var body: some View {
         ZStack {
-            if store.showInsights {
+            if let ev = store.detailEvent {
+                EventDetailPage(e: ev).id(ev.id).transition(.move(edge: .trailing).combined(with: .opacity))
+            } else if store.showInsights {
                 InsightsPage().transition(.opacity.combined(with: .offset(y: 18)))
             } else if store.showCompare {
                 ComparePage().transition(.move(edge: .trailing).combined(with: .opacity))
@@ -44,6 +46,7 @@ struct DetailRoot: View {
         .animation(.spring(response: 0.45, dampingFraction: 0.86), value: store.showCalendar)
         .animation(.spring(response: 0.45, dampingFraction: 0.86), value: store.showCompare)
         .animation(.spring(response: 0.45, dampingFraction: 0.86), value: store.showInsights)
+        .animation(.spring(response: 0.45, dampingFraction: 0.86), value: store.detailEvent?.id)
         .task(id: store.selectedPositionID) {
             while !Task.isCancelled {
                 await store.loadCandidates()
@@ -918,7 +921,7 @@ struct AppSidebar: View {
         return Button {
             withAnimation(.spring(response: 0.42, dampingFraction: 0.84)) {
                 store.showCalendar = key == "calendar"; store.showHiBob = key == "hibob"; store.showInsights = key == "insights"
-                store.showCompare = false; store.selectedCandidateID = nil
+                store.showCompare = false; store.selectedCandidateID = nil; store.detailEvent = nil
             }
         } label: {
             HStack(spacing: 10) {
@@ -974,7 +977,7 @@ struct AppSidebar: View {
                 VStack(spacing: 4) {
                     ForEach(store.positions) { p in
                         SidebarRow(p: p, selected: !store.showHiBob && !store.showCalendar && !store.showInsights && store.selectedPositionID == p.id, ns: selNS) {
-                            withAnimation(.spring(response: 0.42, dampingFraction: 0.84)) { store.showHiBob = false; store.showCalendar = false; store.showInsights = false; store.selectedPositionID = p.id }
+                            withAnimation(.spring(response: 0.42, dampingFraction: 0.84)) { store.showHiBob = false; store.showCalendar = false; store.showInsights = false; store.detailEvent = nil; store.selectedPositionID = p.id }
                         }
                         .contextMenu {
                             Button("岗位设置…") { store.editingPosition = p }
