@@ -145,7 +145,9 @@ struct EventDetail: View {
 /// 自绘气泡：贴着被点的日程弹出，带白色小箭头；点外面、Esc、× 都关闭
 struct EventDetailOverlay: View {
     @EnvironmentObject var store: Store
-    let w: CGFloat = 440, h: CGFloat = 400, gap: CGFloat = 12
+    let w: CGFloat = 440, gap: CGFloat = 12
+    @State private var h: CGFloat = 400          // 卡片实际高度，量出来再定位
+    @State private var openedAt = Date.distantPast
 
     var body: some View {
         // GeometryReader 常驻：第一次弹出时就有正确的窗口尺寸
@@ -154,7 +156,8 @@ struct EventDetailOverlay: View {
                 if let e = store.detailEvent {
                     Color.black.opacity(0.001)
                         .contentShape(Rectangle())
-                        .onTapGesture { dismiss() }
+                        // 打开的那一下点击不能马上被这层当成「点外面」把卡片关掉（之前要点两次的原因）
+                        .onTapGesture { if Date().timeIntervalSince(openedAt) > 0.35 { dismiss() } }
                     let l = layout(g.size)
                     EventDetail(e: e, r: store.reminder) { dismiss() }
                         .id(e.id)
@@ -164,11 +167,12 @@ struct EventDetailOverlay: View {
                             ArrowTip().fill(Color.white)
                                 .overlay(ArrowTip(open: true).stroke(Color.black.opacity(0.08), lineWidth: 1))
                                 .frame(width: 11, height: 22)
-                                .rotationEffect(.degrees(l.side == .below ? 90 : l.side == .right ? 0 : 180))
+                                .rotationEffect(.degrees(l.side == .below ? 90 : l.side == .above ? -90 : l.side == .right ? 0 : 180))
                                 .position(l.arrow)
                         }
                         .shadow(color: .black.opacity(0.16), radius: 24, y: 10)
                         .fixedSize()
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h = $0 }
                         .offset(x: l.origin.x, y: l.origin.y)
                         .transition(.opacity.combined(with: .offset(y: -8)))   // 从上往下轻轻滑入、淡入
                 }
@@ -176,9 +180,10 @@ struct EventDetailOverlay: View {
             .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
         }
         .allowsHitTesting(store.detailEvent != nil)
+        .onChange(of: store.detailEvent?.id) { openedAt = Date() }
     }
 
-    enum Side { case below, right, left }
+    enum Side { case below, above, right, left }
     struct L { var side: Side; var origin: CGPoint; var arrow: CGPoint; var unit: UnitPoint }
 
     /// 宽的列表行：弹在点击位置下方；窄的（侧边栏、日历格子）：右边放得下放右边，否则左边
@@ -189,10 +194,15 @@ struct EventDetailOverlay: View {
         switch side {
         case .below:
             let x = min(max(12, tap.x - w / 2), size.width - w - 12)
-            let below = a.maxY + gap
-            let y = below + h <= size.height - 12 ? below : max(12, a.minY - gap - h)   // 下方放不下就放上方
             let ax = min(max(tap.x - x, 28), w - 28)
-            return L(side: side, origin: CGPoint(x: x, y: y), arrow: CGPoint(x: ax, y: -5), unit: UnitPoint(x: ax / w, y: 0))
+            if a.maxY + gap + h <= size.height - 12 {
+                return L(side: .below, origin: CGPoint(x: x, y: a.maxY + gap), arrow: CGPoint(x: ax, y: -5), unit: UnitPoint(x: ax / w, y: 0))
+            }
+            // 下方放不下：贴在这一行上方，箭头朝下指着它
+            let y = max(12, a.minY - gap - h)
+            return L(side: .above, origin: CGPoint(x: x, y: y), arrow: CGPoint(x: ax, y: h + 5), unit: UnitPoint(x: ax / w, y: 1))
+        case .above:
+            return L(side: .above, origin: .zero, arrow: .zero, unit: .center)
         case .right, .left:
             let x = side == .right ? a.maxX + gap : a.minX - gap - w
             let y = min(max(12, a.midY - 40), max(12, size.height - h - 12))
