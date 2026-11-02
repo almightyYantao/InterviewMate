@@ -16,6 +16,9 @@ struct RecordControl: View {
                     .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
                     .onAppear { pulse = true }
                 Text("转写中 · \(tr.utterances.count) 句").font(.callout.weight(.medium)).monospacedDigit()
+                if !tr.refining.isEmpty {
+                    Text("Whisper 校正中…").font(.caption).foregroundStyle(.secondary)
+                }
                 Button { withAnimation(.snappy) { tr.stop() } } label: {
                     Image(systemName: "stop.fill").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
                         .frame(width: 22, height: 22).background(Color.red, in: Circle())

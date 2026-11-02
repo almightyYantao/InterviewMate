@@ -32,3 +32,18 @@ def decide(s: float, veto: list[str], doubts: list[Doubt], hard_fail: bool = Fal
     if s >= c["advance"] and not veto and highs <= c["max_high_doubts"]:
         return "advance"
     return "conditional"
+
+
+def refresh(body: dict) -> dict:
+    """按当前的分数线重新判定已存报告的结论（改了打分规则后旧报告立刻生效）。"""
+    c = body.get("conclusion") or {}
+    if "score" in c:
+        highs = sum(d.get("severity") == "high" for d in body.get("doubts", []))
+        cfg = _cfg()
+        if c.get("hard_fail") or c["score"] < cfg["reject"]:
+            c["decision"] = "reject"
+        elif c["score"] >= cfg["advance"] and not c.get("veto") and highs <= cfg["max_high_doubts"]:
+            c["decision"] = "advance"
+        else:
+            c["decision"] = "conditional"
+    return body

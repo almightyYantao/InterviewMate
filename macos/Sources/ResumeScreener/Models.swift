@@ -213,6 +213,9 @@ struct AppSettings: Codable, Equatable {
     var speechLocale: String = "zh-CN"
     var captureApp: String = ""
     var silenceSeconds: Double = 1.5
+    var speechEngine: String = "analyzer"
+    var whisperRefine: Bool = true
+    var whisperModel: String = "openai_whisper-large-v3-v20240930_turbo"
     var companyCtx: String = ""
     var interviewMinutes: Int = 60
     var weights = Weights(must: 3, plus: 1, duty: 2, emphasis: 2)
@@ -243,6 +246,8 @@ struct AppSettingsIn: Encodable {
     var apiKey: String?
     var baseUrl, modelFast, modelStrong, aiLanguage, speechLocale, captureApp, companyCtx: String
     var silenceSeconds: Double
+    var speechEngine, whisperModel: String
+    var whisperRefine: Bool
     var interviewMinutes, retentionDays: Int
     var weights: Weights
     var scoring: ScoringRules
@@ -261,6 +266,7 @@ struct AppSettingsIn: Encodable {
         self.apiKey = apiKey
         baseUrl = s.baseUrl; modelFast = s.modelFast; modelStrong = s.modelStrong
         aiLanguage = s.aiLanguage; speechLocale = s.speechLocale; captureApp = s.captureApp; companyCtx = s.companyCtx
+        speechEngine = s.speechEngine; whisperModel = s.whisperModel; whisperRefine = s.whisperRefine
         silenceSeconds = s.silenceSeconds; interviewMinutes = s.interviewMinutes; retentionDays = s.retentionDays
         weights = s.weights; scoring = s.scoring
     }

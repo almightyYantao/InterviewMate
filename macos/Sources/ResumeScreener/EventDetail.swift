@@ -267,9 +267,7 @@ struct MeetingLine: View {
     let m: Meeting
     @State private var copied = false
     var joinURL: URL? {
-        if !m.url.isEmpty { return URL(string: m.url) }
-        if m.app == "腾讯会议", !m.code.isEmpty { return URL(string: "wemeet://page/inmeeting?meeting_code=\(m.code)") }
-        return nil
+        MeetingAction.join(app: m.app, url: m.url, code: m.code)
     }
     var body: some View {
         HStack(spacing: 10) {
