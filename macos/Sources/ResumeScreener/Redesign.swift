@@ -319,6 +319,12 @@ struct ScoreBar: View {
 /// 卡片底部的面试状态：待面试 / 已面试（+ 面试结论）
 struct InterviewBadge: View {
     let c: Candidate
+    @EnvironmentObject var store: Store
+    /// 日历里这个候选人最近一场还没结束的面试
+    var next: CalEvent? {
+        store.reminder.events.filter { $0.candidateId == c.id && ($0.endDate ?? .distantPast) > Date() }
+            .min { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
+    }
     var body: some View {
         if c.interviewed == true {
             let d = c.interviewDecision
@@ -333,7 +339,13 @@ struct InterviewBadge: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
         } else {
-            Label("待面试", systemImage: "clock").font(.caption).foregroundStyle(.secondary)
+            if let d = next?.startDate {
+                Label(String(format: L("待面试 · %@"), d.formatted(.dateTime.month(.defaultDigits).day().weekday(.abbreviated).hour().minute())),
+                      systemImage: "calendar.badge.clock")
+                    .font(.caption.weight(.semibold)).foregroundStyle(Theme.brand)
+            } else {
+                Label("待面试", systemImage: "clock").font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 }

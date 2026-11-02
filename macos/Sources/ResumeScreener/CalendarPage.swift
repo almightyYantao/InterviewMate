@@ -395,12 +395,21 @@ struct EventRow: View {
     }
 }
 
-/// 进入会议：有链接直接打开；腾讯会议只有会议号时用 wemeet 协议拉起客户端；其他只有会议号时复制
+/// 进入会议：腾讯会议有会议号、Zoom 有会议链接时，直接用客户端协议进会；其他有链接就打开链接；只有会议号时复制
 enum MeetingAction {
-    static func url(_ e: CalEvent) -> URL? {
-        if !e.meetingUrl.isEmpty { return URL(string: e.meetingUrl) }
-        if e.meetingApp == "腾讯会议", let c = e.meetingCode, !c.isEmpty { return URL(string: "wemeet://page/inmeeting?meeting_code=\(c)") }
-        return nil
+    static func url(_ e: CalEvent) -> URL? { join(app: e.meetingApp ?? "", url: e.meetingUrl, code: e.meetingCode ?? "") }
+
+    static func join(app: String, url: String, code: String) -> URL? {
+        let digits = code.filter(\.isNumber)
+        if app == "腾讯会议", !digits.isEmpty { return URL(string: "wemeet://page/inmeeting?meeting_code=\(digits)") }
+        if let u = URLComponents(string: url), let host = u.host, host.hasSuffix("zoom.us"),
+           let id = u.path.split(separator: "/").last(where: { $0.allSatisfy(\.isNumber) }) {
+            var z = URLComponents(string: "zoommtg://\(host)/join")!
+            z.queryItems = [URLQueryItem(name: "action", value: "join"), URLQueryItem(name: "confno", value: String(id))]
+                + (u.queryItems?.filter { $0.name == "pwd" } ?? [])
+            return z.url
+        }
+        return url.isEmpty ? nil : URL(string: url)
     }
     static func copyCode(_ e: CalEvent) {
         NSPasteboard.general.clearContents()

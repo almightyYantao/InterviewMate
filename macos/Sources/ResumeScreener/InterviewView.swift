@@ -126,13 +126,15 @@ struct InterviewView: View {
             PillButton(title: "退出", symbol: "xmark") {
                 tr.stop()
                 // 先关窗口，保存放后台做，不让人等网络
-                let cid = store.selectedCandidateID ?? "", note = overall, lines = tr.utterances, hasReview = review != nil
+                let cid = store.selectedCandidateID ?? "", note = overall, hasReview = review != nil, tr = tr
                 if !note.isEmpty { store.report?.overallNote = note }
                 dismiss()
                 Task {
                     await saveScores()
                     if !note.isEmpty { try? await backend.saveNote(cid, note) }
                     // 逐字稿还没随总结保存过的，退出时先存下来，「面试反馈」里能看到、能补生成总结
+                    await tr.finishRefining()
+                    let lines = tr.utterances
                     if !lines.isEmpty && !hasReview { try? await backend.saveTranscript(cid, lines) }
                     await store.loadReport()
                     await store.loadCandidates()
@@ -383,6 +385,7 @@ struct InterviewView: View {
                     withAnimation(.spring(response: 0.4)) { evaluation = e }
                 } else {
                     if tr.running { tr.stop(); try? await Task.sleep(for: .seconds(2)) }  // 等最后一句识别完
+                    await tr.finishRefining()      // 等 Whisper 把每道题重新识别完
                     autoNote(questions[index].id)
                     while !noting.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
                     await saveScores()
@@ -468,8 +471,13 @@ struct InterviewView: View {
 
     func startTranscribing() {
         Task {
-            startError = await tr.start(locale: store.settings?.speechLocale ?? "zh-CN", silence: store.settings?.silenceSeconds ?? 1.5,
-                                         captureApp: store.settings?.captureApp ?? "")
+            let st = store.settings ?? AppSettings()
+            // 职位名和题目关联的要求当热词，提高专有名词识别率
+            var hints = [response.report.position]
+            for q in questions { for r in q.linkedRequirements where r.count <= 20 && !hints.contains(r) { hints.append(r) } }
+            startError = await tr.start(locale: st.speechLocale, silence: st.silenceSeconds, captureApp: st.captureApp,
+                                         speechEngine: st.speechEngine, refine: st.whisperRefine, whisperModel: st.whisperModel,
+                                         hints: Array(hints.filter { !$0.isEmpty }.prefix(40)))
         }
     }
 

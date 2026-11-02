@@ -162,7 +162,30 @@ struct SettingsView: View {
             }
         }
         group {
-            row("语音转写语言", hint: "需要在系统「键盘 › 听写」里下载对应语言的离线模型") {
+            row("实时识别方式", hint: "新识别器需要 macOS 26 及以上，更老的系统会自动用旧的听写识别") {
+                Picker("", selection: $s.speechEngine) {
+                    Text("系统新识别器（推荐）").tag("analyzer")
+                    Text("旧的听写识别").tag("legacy")
+                }
+                .labelsHidden().frame(width: 180)
+            }
+            Divider()
+            row("每题结束后用 Whisper 校正", hint: "切到下一题时，用本机 Whisper 把上一题重新识别一遍并替换逐字稿；音频只放在内存里") {
+                Toggle("", isOn: $s.whisperRefine).labelsHidden().toggleStyle(.switch)
+            }
+            if s.whisperRefine {
+                Divider()
+                row("Whisper 模型", hint: "第一次使用时自动下载；越大越准，也越慢") {
+                    Picker("", selection: $s.whisperModel) {
+                        Text("large-v3 turbo（推荐，约 1.6 GB）").tag("openai_whisper-large-v3-v20240930_turbo")
+                        Text("large-v3（最准，约 3 GB）").tag("openai_whisper-large-v3")
+                        Text("small（快，约 500 MB）").tag("openai_whisper-small")
+                    }
+                    .labelsHidden().frame(width: 260)
+                }
+            }
+            Divider()
+            row("语音转写语言", hint: s.speechEngine == "legacy" ? "需要在系统「键盘 › 听写」里下载对应语言的离线模型" : "识别模型第一次使用时自动下载") {
                 Picker("", selection: $s.speechLocale) {
                     Text("普通话").tag("zh-CN")
                     Text("粤语").tag("zh-HK")

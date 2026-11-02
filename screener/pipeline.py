@@ -66,9 +66,21 @@ def structure_resume(doc: Doc, meta: list[dict]) -> ResumeStruct:
 def match(jd: JDStruct, doc: Doc, today: date, meta: list[dict]) -> list[MatchItem]:
     reqs = [r for r in jd.requirements if r.level != "duty"]
     user = f"<jd>\n{_dump([r.model_dump() for r in reqs])}\n</jd>\n<resume>\n{doc.numbered()}\n</resume>"
-    res = call_structured(stage="match", model=SONNET, system=prompt("match", today=today.isoformat()),
-                          user=user, schema=MatchResult, effort="high", meta=meta)
-    return res.items
+    sys_p = prompt("match", today=today.isoformat())
+    # 结构化输出偶尔交回空壳；用普通 JSON + 校验，漏判的要求单独补问一次
+    items = call_structured(stage="match", model=SONNET, system=sys_p, user=user, schema=MatchResult,
+                            effort="high", meta=meta, json_mode=True).items
+    got = {i.req_id for i in items}
+    left = [r for r in reqs if r.id not in got]
+    if left:
+        user2 = f"<jd>\n{_dump([r.model_dump() for r in left])}\n</jd>\n<resume>\n{doc.numbered()}\n</resume>"
+        items += call_structured(stage="match", model=SONNET, system=sys_p, user=user2, schema=MatchResult,
+                                 effort="high", meta=meta, json_mode=True).items
+        got = {i.req_id for i in items}
+    missing = sum(r.id not in got for r in reqs)
+    if reqs and missing * 2 > len(reqs):
+        raise RuntimeError(f"JD 匹配失败：{missing}/{len(reqs)} 条要求模型没有给出判断，请重新生成")
+    return items
 
 
 # ---------- Stage 5 ----------

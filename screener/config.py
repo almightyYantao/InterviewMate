@@ -27,6 +27,9 @@ DEFAULTS: dict = {
     "speech_locale": "zh-CN",
     "silence_seconds": 1.5,
     "capture_app": "",          # 候选人声音来自哪个 App（Bundle ID），空 = 自动找会议软件
+    "speech_engine": "analyzer",  # 实时识别：analyzer = 系统新识别器（macOS 26+），legacy = 旧的听写识别
+    "whisper_refine": True,     # 每道题结束后用本机 Whisper 重新识别，覆盖实时逐字稿
+    "whisper_model": "openai_whisper-large-v3-v20240930_turbo",
     # 日历：Google 日历「iCal 格式的私密地址」；面试前多少分钟提醒
     "calendar_ics_url": "",
     # Lark 群自定义机器人：把面试评价发到群里
