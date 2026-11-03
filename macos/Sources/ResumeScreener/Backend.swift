@@ -184,6 +184,15 @@ final class Backend: ObservableObject {
                        body: NoteBody(questionId: questionId, transcript: transcript)).note
     }
 
+    struct Terms: Decodable { var terms: [String] }
+    func speechTerms(_ cid: String) async throws -> [String] { try await json(Terms.self, "candidates/\(cid)/speech-terms").terms }
+
+    struct FixResult: Decodable { var lines: [String] }
+    func fixTranscript(_ cid: String, questionId: String, transcript: [Utterance]) async throws -> [String] {
+        try await json(FixResult.self, "candidates/\(cid)/transcript-fix", method: "POST",
+                       body: NoteBody(questionId: questionId, transcript: transcript)).lines
+    }
+
     func settings() async throws -> AppSettings { try await json(AppSettings.self, "settings") }
     func saveSettings(_ s: AppSettingsIn) async throws -> AppSettings {
         try await json(AppSettings.self, "settings", method: "PUT", body: s)

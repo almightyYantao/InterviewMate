@@ -249,6 +249,10 @@ class QuestionNote(BaseModel):
     note: str = Field(description="面试官备注口吻的本题表现总结，80 字以内")
 
 
+class TranscriptFix(BaseModel):
+    lines: list[str] = Field(description="和输入逐行对应的纠正后文字，条数必须相同")
+
+
 class LiveHint(BaseModel):
     covered: list[str]
     missing: list[str]

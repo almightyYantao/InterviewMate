@@ -30,6 +30,8 @@ DEFAULTS: dict = {
     "speech_engine": "analyzer",  # 实时识别：analyzer = 系统新识别器（macOS 26+），legacy = 旧的听写识别
     "whisper_refine": True,     # 每道题结束后用本机 Whisper 重新识别，覆盖实时逐字稿
     "whisper_model": "openai_whisper-large-v3-v20240930_turbo",
+    "speech_terms": "",         # 自己补充的识别术语，逗号或换行分隔
+    "ai_transcript_fix": True,  # Whisper 校正后再用 AI 按术语表纠正专有名词
     # 日历：Google 日历「iCal 格式的私密地址」；面试前多少分钟提醒
     "calendar_ics_url": "",
     # Lark 群自定义机器人：把面试评价发到群里

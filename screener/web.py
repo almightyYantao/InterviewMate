@@ -15,7 +15,7 @@ from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadF
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
-from . import calendar_ics, config, lark, evaluation, hibob, hibob_mcp, llm, render_html, snippet, parsing, pipeline, render, store
+from . import calendar_ics, config, glossary, lark, evaluation, hibob, hibob_mcp, llm, render_html, snippet, parsing, pipeline, render, store
 from .schemas import JDStruct, Report
 
 app = FastAPI(title="简历筛选与面试题生成")
@@ -674,6 +674,22 @@ def put_note(cid: str, body: OverallNoteIn):
 class NoteIn(BaseModel):
     question_id: str
     transcript: list[Utterance]
+
+
+@app.get("/candidates/{cid}/speech-terms")
+def speech_terms(cid: str):
+    """给语音识别用的术语表（热词 / Whisper 提示词）"""
+    rep = store.latest_report(conn(), cid)
+    if not rep:
+        return {"terms": glossary.custom() + glossary.NETWORK}
+    return {"terms": glossary.for_report(Report.model_validate_json(rep["body"]))}
+
+
+@app.post("/candidates/{cid}/transcript-fix")
+def transcript_fix(cid: str, body: NoteIn):
+    rep = Report.model_validate_json(_report_row(conn(), cid)["body"])
+    return {"lines": evaluation.fix_transcript(rep, body.question_id, [u.model_dump() for u in body.transcript],
+                                               glossary.for_report(rep))}
 
 
 @app.post("/candidates/{cid}/question-note")

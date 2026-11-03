@@ -146,6 +146,8 @@ final class Transcriber: ObservableObject {
     private var refineCfg: (model: String, language: String, prompt: String)?
     private var segStart: Double = 0                // 当前这道题从第几秒开始录
     private var refineTasks: [Task<Void, Never>] = []
+    /// 一道题识别完后按术语表纠正专有名词：传入题目和这道题的逐字稿，返回一一对应的新文字
+    var corrector: ((String, [Utterance]) async -> [String]?)?
 
     private let engine = AVAudioEngine()
     private var mic: SpeechSink?
@@ -199,7 +201,7 @@ final class Transcriber: ObservableObject {
         segStart = 0
         utterances = []
         if refine && !whisperModel.isEmpty {
-            let lead = code == "zh-CN" ? "以下是普通话的面试对话，使用简体中文和标点。" : ""
+            let lead = code == "zh-CN" ? "以下是普通话的网络技术面试，中英混说，英文术语保留英文写法，使用简体中文和标点。常用术语：" : ""
             refineCfg = (whisperModel, WhisperEngine.language(code), lead + hints.joined(separator: "、"))
             recMe = AudioRecorder(); recCand = AudioRecorder()
             Task.detached { await WhisperEngine.shared.warmUp(whisperModel) }
@@ -291,14 +293,16 @@ final class Transcriber: ObservableObject {
     private func cut(_ qid: String) {
         let from = segStart
         segStart = Date().timeIntervalSince(t0)
-        guard !qid.isEmpty, let cfg = refineCfg else { return }
-        let jobs: [(String, [Float])] = [("me", recMe?.take()), ("candidate", recCand?.take())]
+        guard !qid.isEmpty else { return }
+        let cfg = refineCfg
+        let jobs: [(String, [Float])] = cfg == nil ? [] : [("me", recMe?.take()), ("candidate", recCand?.take())]
             .compactMap { sp, a in a.map { (sp, $0) } }
             .filter { $0.1.count > Int(AudioRecorder.rate) }    // 不到 1 秒不处理
-        guard !jobs.isEmpty else { return }
+        guard !jobs.isEmpty || (corrector != nil && utterances.contains { $0.questionId == qid }) else { return }
         refining.insert(qid)
         refineTasks.append(Task { [weak self] in
             for (speaker, audio) in jobs {
+                guard let cfg else { break }
                 do {
                     let segs = try await WhisperEngine.shared.transcribe(audio, model: cfg.model, language: cfg.language, prompt: cfg.prompt)
                     self?.replace(qid, speaker, from: from, until: from + Double(audio.count) / AudioRecorder.rate, segs)
@@ -307,8 +311,17 @@ final class Transcriber: ObservableObject {
                     self?.warning = L("Whisper 重新识别失败，这道题保留实时识别的结果：") + error.localizedDescription
                 }
             }
+            await self?.correct(qid)
             self?.refining.remove(qid)
         })
+    }
+
+    private func correct(_ qid: String) async {
+        guard let corrector else { return }
+        let lines = utterances.filter { $0.questionId == qid && ($0.speaker == "me" || $0.speaker == "candidate") }
+        guard !lines.isEmpty, let out = await corrector(qid, lines), out.count == lines.count else { return }
+        let fixed = Dictionary(uniqueKeysWithValues: zip(lines.map(\.id), out))
+        for i in utterances.indices { if let t = fixed[utterances[i].id], !t.isEmpty { utterances[i].text = t } }
     }
 
     private func replace(_ qid: String, _ speaker: String, from: Double, until: Double, _ segs: [(start: Double, text: String)]) {

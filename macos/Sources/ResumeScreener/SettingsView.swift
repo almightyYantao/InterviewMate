@@ -185,6 +185,15 @@ struct SettingsView: View {
                 }
             }
             Divider()
+            row("用 AI 纠正专有名词", hint: "每道题识别完，按术语表把听错的 OSPF、802.1X、FortiGate 这类词改回来；会把这道题的文字发给 AI 接口") {
+                Toggle("", isOn: $s.aiTranscriptFix).labelsHidden().toggleStyle(.switch)
+            }
+            Divider()
+            row("补充识别术语", hint: "逗号或换行分隔。JD、面试题里的英文词和常用网络术语已自动加入，这里写其他常说错的词") {
+                box(TextField("", text: $s.speechTerms, prompt: Text("Spine-Leaf, EVPN, 华三"), axis: .vertical)
+                    .lineLimit(2...4).textFieldStyle(.plain)).frame(width: 260)
+            }
+            Divider()
             row("语音转写语言", hint: s.speechEngine == "legacy" ? "需要在系统「键盘 › 听写」里下载对应语言的离线模型" : "识别模型第一次使用时自动下载") {
                 Picker("", selection: $s.speechLocale) {
                     Text("普通话").tag("zh-CN")

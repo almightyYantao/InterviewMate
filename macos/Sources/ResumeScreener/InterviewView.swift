@@ -473,11 +473,17 @@ struct InterviewView: View {
         Task {
             let st = store.settings ?? AppSettings()
             // 职位名和题目关联的要求当热词，提高专有名词识别率
-            var hints = [response.report.position]
-            for q in questions { for r in q.linkedRequirements where r.count <= 20 && !hints.contains(r) { hints.append(r) } }
+            let cid = store.selectedCandidateID ?? ""
+            // 术语表：自定义词 + 报告里的英文 / 技术词 + 内置网络术语，当热词和 Whisper 提示词
+            var hints = (try? await backend.speechTerms(cid)) ?? []
+            if hints.isEmpty {
+                hints = [response.report.position]
+                for q in questions { for r in q.linkedRequirements where r.count <= 20 && !hints.contains(r) { hints.append(r) } }
+            }
+            tr.corrector = st.aiTranscriptFix ? { qid, lines in try? await backend.fixTranscript(cid, questionId: qid, transcript: lines) } : nil
             startError = await tr.start(locale: st.speechLocale, silence: st.silenceSeconds, captureApp: st.captureApp,
                                          speechEngine: st.speechEngine, refine: st.whisperRefine, whisperModel: st.whisperModel,
-                                         hints: Array(hints.filter { !$0.isEmpty }.prefix(40)))
+                                         hints: Array(hints.filter { !$0.isEmpty }.prefix(100)))
         }
     }
 
