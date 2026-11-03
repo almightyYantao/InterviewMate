@@ -167,7 +167,7 @@ final class Transcriber: ObservableObject {
 
     func start(locale code: String = "zh-CN", silence: Double = 1.5, captureApp: String = "",
                speechEngine: String = "analyzer", refine: Bool = false, whisperModel: String = "",
-               hints: [String] = []) async -> String? {
+               hints: [String] = [], volc: VolcChannel.Credentials? = nil) async -> String? {
         starting = true
         defer { starting = false }
         let auth = await withCheckedContinuation { c in SFSpeechRecognizer.requestAuthorization { c.resume(returning: $0) } }
@@ -178,7 +178,14 @@ final class Transcriber: ObservableObject {
         let locale = Locale(identifier: code)
         let name = Locale.current.localizedString(forIdentifier: code) ?? code
         var m: SpeechSink, s: SpeechSink
-        if #available(macOS 26, *), speechEngine == "analyzer", SpeechTranscriber.isAvailable {
+        var refine = refine
+        if speechEngine == "volc" {
+            guard let volc, !volc.appId.isEmpty, !volc.token.isEmpty else {
+                return L("还没填豆包识别的 App ID 和 Access Token：请在「设置 › 语音转写」里填写。")
+            }
+            m = VolcChannel(credentials: volc, hints: hints); s = VolcChannel(credentials: volc, hints: hints)
+            refine = false          // 云端识别已经够准，不用再拿 Whisper 重识别
+        } else if #available(macOS 26, *), speechEngine == "analyzer", SpeechTranscriber.isAvailable {
             // 新识别器：长音频模型、整场不切段；模型没装会自动下载
             let l: Locale?
             do { l = try await AnalyzerChannel.prepare(locale: locale) } catch {
