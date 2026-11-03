@@ -374,8 +374,8 @@ final class Transcriber: ObservableObject {
     /// 放在非隔离的静态方法里，避免音频线程上的回调被当成主线程闭包检查
     nonisolated private static func installTap(_ engine: AVAudioEngine, channel: SpeechSink, recorder: AudioRecorder?) throws {
         let input = engine.inputNode
-        // 回声消除：外放时扬声器里候选人的声音不再被麦克风当成「我」说的
-        try? input.setVoiceProcessingEnabled(true)
+        // 不开系统回声消除：它会另建音频链路，蓝牙耳机下和会议软件的进程监听冲突，候选人那一路收不到声音。
+        // 外放串音靠 onFinal 里的文字去重处理
         let fmt = input.outputFormat(forBus: 0)
         guard fmt.sampleRate > 0 else { throw NSError(domain: "screener", code: 2, userInfo: [NSLocalizedDescriptionKey: L("没有可用的麦克风")]) }
         input.installTap(onBus: 0, bufferSize: 4096, format: fmt) { buf, _ in channel.append(buf); recorder?.append(buf) }
