@@ -45,8 +45,9 @@ final class AnalyzerChannel: SpeechSink, @unchecked Sendable {
         return l
     }
 
+    /// 不用 fastResults：它用准确率换速度，容易漏字
     private static func makeTranscriber(_ l: Locale) -> SpeechTranscriber {
-        SpeechTranscriber(locale: l, transcriptionOptions: [], reportingOptions: [.volatileResults, .fastResults],
+        SpeechTranscriber(locale: l, transcriptionOptions: [], reportingOptions: [.volatileResults],
                           attributeOptions: [])
     }
 
