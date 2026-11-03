@@ -109,16 +109,9 @@ def get_note(c: sqlite3.Connection, candidate_id: str) -> str:
     return r["note"] if r else ""
 
 
-def latest_report(c: sqlite3.Connection, candidate_id: str) -> dict | None:
-    """最新一版报告；结论按当前打分规则重新判定"""
-    from .scoring import refresh
-    r = c.execute("SELECT * FROM reports WHERE candidate_id=? ORDER BY version DESC LIMIT 1",
-                  (candidate_id,)).fetchone()
-    if r is None:
-        return None
-    d = dict(r)
-    d["body"] = json.dumps(refresh(json.loads(d["body"])), ensure_ascii=False)
-    return d
+def latest_report(c: sqlite3.Connection, candidate_id: str) -> sqlite3.Row | None:
+    return c.execute("SELECT * FROM reports WHERE candidate_id=? ORDER BY version DESC LIMIT 1",
+                     (candidate_id,)).fetchone()
 
 
 def save_report(c: sqlite3.Connection, candidate_id: str, body: dict, edited_by: str | None = None) -> str:
