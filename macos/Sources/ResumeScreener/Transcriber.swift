@@ -155,6 +155,7 @@ final class Transcriber: ObservableObject {
     private var sys: SpeechSink?
     private var stream: SCStream?
     private let output = SystemAudioOutput()
+    private var micCapture: MicCapture?
     private var t0 = Date()
 
     /// 面试官按快捷键打的标记，放进逐字稿，生成总结时会重点看
@@ -216,9 +217,15 @@ final class Transcriber: ObservableObject {
         m.start(); s.start()
 
         do {
-            try Self.installTap(engine, channel: m, recorder: rm)
-            engine.prepare()
-            try engine.start()
+            if let cap = MicCapture(channel: m, recorder: rm) {
+                // 固定用 Mac 自带麦克风：不占用蓝牙耳机的麦克风，耳机就不会被切到通话模式（单声道、低采样率）
+                micCapture = cap
+                cap.start()
+            } else {
+                try Self.installTap(engine, channel: m, recorder: rm)
+                engine.prepare()
+                try engine.start()
+            }
         } catch {
             stop()
             return L("麦克风启动失败：") + error.localizedDescription
@@ -271,8 +278,11 @@ final class Transcriber: ObservableObject {
     }
 
     func stop() {
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+        micCapture?.stop(); micCapture = nil
+        if engine.isRunning {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+        }
         mic?.stop(); sys?.stop()
         mic = nil; sys = nil
         output.channel = nil
@@ -368,27 +378,6 @@ final class Transcriber: ObservableObject {
         }
     }
 
-    /// Mac 自带的麦克风（没有就返回 nil，用系统默认）
-    nonisolated static func builtInMic() -> AudioDeviceID? {
-        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal,
-                                              mElement: kAudioObjectPropertyElementMain)
-        var size: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size) == noErr else { return nil }
-        var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &ids) == noErr else { return nil }
-        return ids.first { id in
-            var t: UInt32 = 0, n = UInt32(MemoryLayout<UInt32>.size)
-            var a = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyTransportType, mScope: kAudioObjectPropertyScopeGlobal,
-                                               mElement: kAudioObjectPropertyElementMain)
-            guard AudioObjectGetPropertyData(id, &a, 0, nil, &n, &t) == noErr, t == kAudioDeviceTransportTypeBuiltIn else { return false }
-            // 有输入声道的才是麦克风
-            var sa = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams, mScope: kAudioDevicePropertyScopeInput,
-                                                mElement: kAudioObjectPropertyElementMain)
-            var sz: UInt32 = 0
-            return AudioObjectGetPropertyDataSize(id, &sa, 0, nil, &sz) == noErr && sz > 0
-        }
-    }
-
     /// 两句话的字重合度（二元组），用来认出麦克风串音
     nonisolated static func similar(_ a: String, _ b: String) -> Bool {
         func grams(_ s: String) -> Set<String> {
@@ -403,16 +392,43 @@ final class Transcriber: ObservableObject {
     /// 放在非隔离的静态方法里，避免音频线程上的回调被当成主线程闭包检查
     nonisolated private static func installTap(_ engine: AVAudioEngine, channel: SpeechSink, recorder: AudioRecorder?) throws {
         let input = engine.inputNode
-        // 固定用 Mac 自带麦克风：系统默认是蓝牙耳机时，占用耳机麦克风会把耳机切到通话模式（单声道、低采样率），
-        // 两路声音（含会议里候选人的声音）都会变成电话音质，识别很差
-        if var dev = Self.builtInMic(), let unit = input.audioUnit {
-            AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
-                                 &dev, UInt32(MemoryLayout<AudioDeviceID>.size))
-        }
         // 不开系统回声消除：它会另建音频链路，蓝牙耳机下和会议软件的进程监听冲突，候选人那一路收不到声音。
         // 外放串音靠 onFinal 里的文字去重处理
         let fmt = input.outputFormat(forBus: 0)
         guard fmt.sampleRate > 0 else { throw NSError(domain: "screener", code: 2, userInfo: [NSLocalizedDescriptionKey: L("没有可用的麦克风")]) }
         input.installTap(onBus: 0, bufferSize: 4096, format: fmt) { buf, _ in channel.append(buf); recorder?.append(buf) }
+    }
+}
+
+/// 用 AVCaptureSession 采 Mac 自带麦克风（不经过系统默认输入设备）
+final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, @unchecked Sendable {
+    private let session = AVCaptureSession()
+    private let queue = DispatchQueue(label: "screener.mic")
+    private let channel: SpeechSink
+    private let recorder: AudioRecorder?
+
+    init?(channel: SpeechSink, recorder: AudioRecorder?) {
+        let found = AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone], mediaType: .audio, position: .unspecified)
+            .devices.first { $0.transportType == Int32(bitPattern: kAudioDeviceTransportTypeBuiltIn) }
+        guard let dev = found, let input = try? AVCaptureDeviceInput(device: dev) else { return nil }
+        self.channel = channel
+        self.recorder = recorder
+        super.init()
+        let out = AVCaptureAudioDataOutput()
+        session.beginConfiguration()
+        guard session.canAddInput(input), session.canAddOutput(out) else { session.commitConfiguration(); return nil }
+        session.addInput(input)
+        session.addOutput(out)
+        session.commitConfiguration()
+        out.setSampleBufferDelegate(self, queue: queue)
+    }
+
+    func start() { queue.async { self.session.startRunning() } }
+    func stop() { queue.async { self.session.stopRunning() } }
+
+    func captureOutput(_ output: AVCaptureOutput, didOutput sb: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard let buf = pcmBuffer(from: sb) else { return }
+        channel.append(buf)
+        recorder?.append(buf)
     }
 }
