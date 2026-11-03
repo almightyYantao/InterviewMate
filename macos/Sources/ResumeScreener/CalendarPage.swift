@@ -420,9 +420,28 @@ enum MeetingAction {
 struct MeetingButton: View {
     let e: CalEvent
     @State private var copied = false
+    /// 日程里的所有会议（去重）；老数据只有一个会议时退回单个字段
+    var all: [Meeting] {
+        var seen = Set<String>()
+        let ms = e.meetings ?? ((e.meetingApp ?? "").isEmpty && e.meetingUrl.isEmpty ? [] : [Meeting(app: e.meetingApp ?? "", url: e.meetingUrl, code: e.meetingCode ?? "")])
+        return ms.filter { seen.insert($0.url + "|" + $0.code).inserted }
+    }
+
     var body: some View {
         let app = (e.meetingApp ?? "").isEmpty ? L("会议") : L(e.meetingApp!)
-        if let u = MeetingAction.url(e) {
+        let ms = all
+        if ms.count > 1 {
+            // 多个会议：下拉选择进哪个
+            PopoverMenu(title: "进入会议", symbol: "video.fill", items: ms.map { m in
+                let name = (m.app.isEmpty ? L("会议") : L(m.app)) + (m.code.isEmpty ? "" : " · " + m.code)
+                if let u = MeetingAction.join(app: m.app, url: m.url, code: m.code) {
+                    return (name, "video", { NSWorkspace.shared.open(u) })
+                }
+                return (String(format: L("复制会议号 %@"), m.code), "doc.on.doc", {
+                    NSPasteboard.general.clearContents(); NSPasteboard.general.setString(m.code, forType: .string)
+                })
+            })
+        } else if let u = MeetingAction.url(e) {
             PillButton(title: String(format: L("进入%@"), app), symbol: "video.fill") { NSWorkspace.shared.open(u) }
         } else if let c = e.meetingCode, !c.isEmpty {
             PillButton(title: copied ? L("已复制会议号") : String(format: L("复制%@会议号"), app), symbol: "doc.on.doc") {

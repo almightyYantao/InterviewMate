@@ -322,8 +322,7 @@ struct InterviewBadge: View {
     @EnvironmentObject var store: Store
     /// 日历里这个候选人最近一场还没结束的面试
     var next: CalEvent? {
-        store.reminder.events.filter { $0.candidateId == c.id && ($0.endDate ?? .distantPast) > Date() }
-            .min { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
+        store.nextEvent(c.id)
     }
     var body: some View {
         if c.interviewed == true {
@@ -407,11 +406,15 @@ struct CandidateDetail: View {
                         ("一面准备 · Markdown", "doc.plaintext", { store.export(format: "md", answers: true) }),
                         ("面试记录表 · 不含答案", "doc.on.clipboard", { store.export(format: "docx", answers: false) }),
                         ("面试记录表 · 网页（HTML）", "safari", { store.export(format: "html", answers: false) })])
+                    if let e = store.nextEvent(store.selectedCandidateID), MeetingAction.url(e) != nil || !(e.meetingCode ?? "").isEmpty {
+                        MeetingButton(e: e)
+                    }
                     PrimaryButton(title: "开始面试", symbol: "play.fill") { store.interviewing = true }
                 }
             }
-            .padding(.horizontal, 24).padding(.top, 12).padding(.bottom, 4)
+            .padding(.horizontal, 24).padding(.top, 12).padding(.bottom, 12)
             .background(Color.white)
+            .zIndex(1)      // 按钮的投影画在下面内容的上层，不被裁掉
         Group {
             if let r = store.report, r.report.candidate == store.selectedCandidate?.name || store.selectedCandidate?.name == nil {
                 ReportPage(resp: r, ns: ns)

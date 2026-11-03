@@ -24,6 +24,7 @@ final class AnalyzerChannel: SpeechSink, @unchecked Sendable {
     private var analyzer: SpeechAnalyzer?
     private var target: AVAudioFormat?
     private var resampler: Resampler?
+    private var pending: [AVAudioPCMBuffer] = []     // 模型加载完之前进来的声音，先存着
     private var running = false
     var onPartial: (String) -> Void = { _ in }
     var onFinal: (String) -> Void = { _ in }
@@ -64,7 +65,14 @@ final class AnalyzerChannel: SpeechSink, @unchecked Sendable {
                     ctx.contextualStrings[.general] = hints
                     try? await a.setContext(ctx)
                 }
-                lock.withLock { self.target = fmt; self.analyzer = a }
+                // 模型加载要几秒，这期间的声音（往往是开场自我介绍）先缓存，准备好后补送
+                let cont = lock.withLock { () -> AsyncStream<AnalyzerInput>.Continuation? in
+                    self.target = fmt; self.analyzer = a
+                    for b in self.pending { if let o = self.convert(b) { self.continuation?.yield(AnalyzerInput(buffer: o)) } }
+                    self.pending = []
+                    return self.continuation
+                }
+                _ = cont
                 Task { [weak self] in
                     do {
                         for try await r in t.results {
@@ -109,7 +117,12 @@ final class AnalyzerChannel: SpeechSink, @unchecked Sendable {
 
     func append(_ buf: AVAudioPCMBuffer) {
         lock.lock(); defer { lock.unlock() }
-        guard let c = continuation, let out = convert(buf) else { return }
+        guard let c = continuation else { return }
+        if target == nil {
+            if pending.count < 4000, let copy = Self.copy(buf) { pending.append(copy) }
+            return
+        }
+        guard let out = convert(buf) else { return }
         c.yield(AnalyzerInput(buffer: out))
     }
 
@@ -118,9 +131,18 @@ final class AnalyzerChannel: SpeechSink, @unchecked Sendable {
         append(buf)
     }
 
+    static func copy(_ b: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        guard let c = AVAudioPCMBuffer(pcmFormat: b.format, frameCapacity: b.frameLength) else { return nil }
+        c.frameLength = b.frameLength
+        let src = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: b.audioBufferList))
+        let dst = UnsafeMutableAudioBufferListPointer(c.mutableAudioBufferList)
+        for (s, d) in zip(src, dst) { if let sp = s.mData, let dp = d.mData { memcpy(dp, sp, Int(min(s.mDataByteSize, d.mDataByteSize))) } }
+        return c
+    }
+
     /// 转成识别器要的格式（一般是 16k 单声道）。调用方持锁。
     private func convert(_ buf: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-        guard let target else { return nil }      // 还没准备好，前几十毫秒丢掉
+        guard let target else { return nil }
         if resampler?.target != target { resampler = Resampler(target: target) }
         return resampler?.convert(buf)
     }

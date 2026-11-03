@@ -58,6 +58,15 @@ final class Store: ObservableObject {
     @Published var editingPosition: Position?
     @Published var showImporter = false
     @Published var interviewing = false
+
+    /// 日历里这个候选人最近一场还没结束的面试
+    func nextEvent(_ cid: String?) -> CalEvent? {
+        guard let cid else { return nil }
+        return reminder.events.filter { $0.candidateId == cid && ($0.endDate ?? .distantPast) > Date() }
+            .min { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
+    }
+    @Published var interviewReport: ReportResponse?     // 面试窗口里的报告（固定住，主窗口换候选人不影响）
+    var interviewCandidateID: String?
     @Published var errorMessage: String?
 
     var selectedPosition: Position? { positions.first { $0.id == selectedPositionID } }

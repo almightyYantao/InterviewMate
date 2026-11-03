@@ -339,8 +339,13 @@ final class Transcriber: ObservableObject {
         c.onFinal = { [weak self] text in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.utterances.append(Utterance(speaker: speaker, text: text, questionId: self.currentQuestion,
-                                                 at: Date().timeIntervalSince(self.t0)))
+                let now = Date().timeIntervalSince(self.t0)
+                // 麦克风串进了候选人的声音：两路 15 秒内说的话几乎一样，以候选人那一路为准
+                let other = speaker == "me" ? "candidate" : "me"
+                let echo = { (u: Utterance) in u.speaker == other && now - u.at < 15 && Self.similar(u.text, text) }
+                if speaker == "me", self.utterances.contains(where: echo) { return }
+                if speaker == "candidate" { self.utterances.removeAll(where: echo) }
+                self.utterances.append(Utterance(speaker: speaker, text: text, questionId: self.currentQuestion, at: now))
             }
         }
         c.onFatal = { [weak self] e in
@@ -355,9 +360,22 @@ final class Transcriber: ObservableObject {
         }
     }
 
+    /// 两句话的字重合度（二元组），用来认出麦克风串音
+    nonisolated static func similar(_ a: String, _ b: String) -> Bool {
+        func grams(_ s: String) -> Set<String> {
+            let c = Array(s.filter { !$0.isPunctuation && !$0.isWhitespace })
+            return c.count < 2 ? Set(c.map(String.init)) : Set((0..<c.count - 1).map { String(c[$0...$0 + 1]) })
+        }
+        let x = grams(a), y = grams(b)
+        guard min(x.count, y.count) >= 3 else { return false }
+        return Double(x.intersection(y).count) / Double(min(x.count, y.count)) > 0.6
+    }
+
     /// 放在非隔离的静态方法里，避免音频线程上的回调被当成主线程闭包检查
     nonisolated private static func installTap(_ engine: AVAudioEngine, channel: SpeechSink, recorder: AudioRecorder?) throws {
         let input = engine.inputNode
+        // 回声消除：外放时扬声器里候选人的声音不再被麦克风当成「我」说的
+        try? input.setVoiceProcessingEnabled(true)
         let fmt = input.outputFormat(forBus: 0)
         guard fmt.sampleRate > 0 else { throw NSError(domain: "screener", code: 2, userInfo: [NSLocalizedDescriptionKey: L("没有可用的麦克风")]) }
         input.installTap(onBus: 0, bufferSize: 4096, format: fmt) { buf, _ in channel.append(buf); recorder?.append(buf) }
