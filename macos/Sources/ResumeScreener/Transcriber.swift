@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 import ScreenCaptureKit
 import Speech
 import SwiftUI
@@ -360,6 +361,27 @@ final class Transcriber: ObservableObject {
         }
     }
 
+    /// Mac 自带的麦克风（没有就返回 nil，用系统默认）
+    nonisolated static func builtInMic() -> AudioDeviceID? {
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal,
+                                              mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size) == noErr else { return nil }
+        var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &ids) == noErr else { return nil }
+        return ids.first { id in
+            var t: UInt32 = 0, n = UInt32(MemoryLayout<UInt32>.size)
+            var a = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyTransportType, mScope: kAudioObjectPropertyScopeGlobal,
+                                               mElement: kAudioObjectPropertyElementMain)
+            guard AudioObjectGetPropertyData(id, &a, 0, nil, &n, &t) == noErr, t == kAudioDeviceTransportTypeBuiltIn else { return false }
+            // 有输入声道的才是麦克风
+            var sa = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams, mScope: kAudioDevicePropertyScopeInput,
+                                                mElement: kAudioObjectPropertyElementMain)
+            var sz: UInt32 = 0
+            return AudioObjectGetPropertyDataSize(id, &sa, 0, nil, &sz) == noErr && sz > 0
+        }
+    }
+
     /// 两句话的字重合度（二元组），用来认出麦克风串音
     nonisolated static func similar(_ a: String, _ b: String) -> Bool {
         func grams(_ s: String) -> Set<String> {
@@ -374,6 +396,12 @@ final class Transcriber: ObservableObject {
     /// 放在非隔离的静态方法里，避免音频线程上的回调被当成主线程闭包检查
     nonisolated private static func installTap(_ engine: AVAudioEngine, channel: SpeechSink, recorder: AudioRecorder?) throws {
         let input = engine.inputNode
+        // 固定用 Mac 自带麦克风：系统默认是蓝牙耳机时，占用耳机麦克风会把耳机切到通话模式（单声道、低采样率），
+        // 两路声音（含会议里候选人的声音）都会变成电话音质，识别很差
+        if var dev = Self.builtInMic(), let unit = input.audioUnit {
+            AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+                                 &dev, UInt32(MemoryLayout<AudioDeviceID>.size))
+        }
         // 不开系统回声消除：它会另建音频链路，蓝牙耳机下和会议软件的进程监听冲突，候选人那一路收不到声音。
         // 外放串音靠 onFinal 里的文字去重处理
         let fmt = input.outputFormat(forBus: 0)
