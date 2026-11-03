@@ -328,6 +328,13 @@ final class Transcriber: ObservableObject {
     private func replace(_ qid: String, _ speaker: String, from: Double, until: Double, _ segs: [(start: Double, text: String)]) {
         guard !segs.isEmpty else { return }       // Whisper 没听出东西就保留实时结果
         // 实时结果是整句说完才记时间，往后放宽几秒
+        let old = utterances.filter { $0.questionId == qid && $0.speaker == speaker && $0.at >= from - 1 && $0.at <= until + 5 }
+        // Whisper 遇到没把握的片段会整段跳过：结果明显比实时字幕短时，说明丢了内容，保留实时字幕
+        let oldLen = old.reduce(0) { $0 + $1.text.count }, newLen = segs.reduce(0) { $0 + $1.text.count }
+        if oldLen > 20 && Double(newLen) < Double(oldLen) * 0.6 {
+            NSLog("whisper result too short (\(newLen) vs \(oldLen)), keep live transcript")
+            return
+        }
         utterances.removeAll { $0.questionId == qid && $0.speaker == speaker && $0.at >= from - 1 && $0.at <= until + 5 }
         utterances += segs.map { Utterance(speaker: speaker, text: $0.text, questionId: qid, at: from + $0.start) }
         utterances.sort { $0.at < $1.at }
