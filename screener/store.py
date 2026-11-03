@@ -83,6 +83,7 @@ def delete_candidate(c: sqlite3.Connection, r) -> None:
     """删除候选人及其文件、报告、打分、评价、逐字稿（不 commit）。"""
     if r["file_key"]:
         (file_dir() / r["file_key"]).unlink(missing_ok=True)
+        (file_dir() / (r["file_key"] + ".ocr.txt")).unlink(missing_ok=True)
     rep_ids = [x["id"] for x in c.execute("SELECT id FROM reports WHERE candidate_id=?", (r["id"],))]
     for rid in rep_ids:
         c.execute("DELETE FROM interview_scores WHERE report_id=?", (rid,))
@@ -108,9 +109,16 @@ def get_note(c: sqlite3.Connection, candidate_id: str) -> str:
     return r["note"] if r else ""
 
 
-def latest_report(c: sqlite3.Connection, candidate_id: str) -> sqlite3.Row | None:
-    return c.execute("SELECT * FROM reports WHERE candidate_id=? ORDER BY version DESC LIMIT 1",
-                     (candidate_id,)).fetchone()
+def latest_report(c: sqlite3.Connection, candidate_id: str) -> dict | None:
+    """最新一版报告；结论按当前打分规则重新判定"""
+    from .scoring import refresh
+    r = c.execute("SELECT * FROM reports WHERE candidate_id=? ORDER BY version DESC LIMIT 1",
+                  (candidate_id,)).fetchone()
+    if r is None:
+        return None
+    d = dict(r)
+    d["body"] = json.dumps(refresh(json.loads(d["body"])), ensure_ascii=False)
+    return d
 
 
 def save_report(c: sqlite3.Connection, candidate_id: str, body: dict, edited_by: str | None = None) -> str:
