@@ -83,6 +83,7 @@ def delete_candidate(c: sqlite3.Connection, r) -> None:
     """删除候选人及其文件、报告、打分、评价、逐字稿（不 commit）。"""
     if r["file_key"]:
         (file_dir() / r["file_key"]).unlink(missing_ok=True)
+        (file_dir() / (r["file_key"] + ".ocr.txt")).unlink(missing_ok=True)
     rep_ids = [x["id"] for x in c.execute("SELECT id FROM reports WHERE candidate_id=?", (r["id"],))]
     for rid in rep_ids:
         c.execute("DELETE FROM interview_scores WHERE report_id=?", (rid,))

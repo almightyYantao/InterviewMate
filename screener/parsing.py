@@ -200,6 +200,31 @@ def unmask(text: str, mapping: dict[str, str]) -> str:
 # ---------- 入口 ----------
 
 
+def ocr_path(path: Path) -> Path:
+    return path.with_name(path.name + ".ocr.txt")
+
+
+def ocr_lines(path: Path) -> list[str]:
+    """扫描版 PDF 没有文字层：让模型逐行转写一次，缓存在文件旁边，之后行号固定不变"""
+    cache = ocr_path(path)
+    if cache.exists():
+        return cache.read_text(encoding="utf-8").splitlines()
+    from .llm import SONNET, call_structured
+    from .schemas import OcrResult
+    try:
+        res = call_structured(
+            stage="ocr", model=SONNET, effort="low", json_mode=True, schema=OcrResult, pdf=path.read_bytes(),
+            system="你在把一份扫描版简历转成文字。按阅读顺序逐行转写，一行对应原文一行，原样照抄，"
+                   "不总结、不改写、不补全、不翻译；表格按行展开，单元格之间用空格隔开；页眉页脚、水印不要。",
+            user="把这份简历逐行转写成文字。")
+    except Exception:
+        return []          # 转写失败时退回原来的做法：只有结构化那一步看 PDF
+    lines = [l.strip() for l in res.lines if l.strip()]
+    if lines:
+        cache.write_text("\n".join(lines), encoding="utf-8")
+    return lines
+
+
 def load(path: str | Path, mask: bool = True) -> Doc:
     path = Path(path)
     ext = path.suffix.lower()
@@ -211,6 +236,7 @@ def load(path: str | Path, mask: bool = True) -> Doc:
         lines, pages, scanned = _read_pdf(path)
         if scanned:
             pdf_bytes = path.read_bytes()
+            lines, pages = ocr_lines(path), []
     elif ext == ".docx":
         lines, bold = _read_docx(path)
     elif ext in {".md", ".txt", ""}:

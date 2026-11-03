@@ -253,6 +253,10 @@ class TranscriptFix(BaseModel):
     lines: list[str] = Field(description="和输入逐行对应的纠正后文字，条数必须相同")
 
 
+class OcrResult(BaseModel):
+    lines: list[str] = Field(description="简历原文，按阅读顺序一行一项")
+
+
 class LiveHint(BaseModel):
     covered: list[str]
     missing: list[str]
