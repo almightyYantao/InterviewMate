@@ -704,6 +704,8 @@ def _settings_out() -> dict:
     s = config.get()
     k = s.pop("api_key") or ""
     t = s.pop("hibob_token") or ""
+    vt = s.pop("volc_token") or ""
+    s["volc_token_hint"] = ("…" + vt[-4:]) if vt else ""
     cal = s.pop("calendar_ics_url") or ""
     hook = s.pop("lark_webhook") or ""
     s.pop("lark_secret", None)
@@ -712,6 +714,13 @@ def _settings_out() -> dict:
     s.pop("hibob_oauth", None)
     return {**s, "api_key_hint": (k[:7] + "…" + k[-4:]) if k else "", "hibob_token_hint": ("…" + t[-4:]) if t else "",
             "default_fast": llm.SONNET, "default_strong": llm.OPUS}
+
+
+@app.get("/speech/volc")
+def volc_credentials():
+    """转写时取豆包识别的凭据（后端只监听本机）"""
+    s = config.get()
+    return {"app_id": s["volc_app_id"], "token": s["volc_token"], "resource_id": s["volc_resource_id"]}
 
 
 @app.get("/settings")

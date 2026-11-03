@@ -40,6 +40,7 @@ struct SettingsView: View {
     @State private var testResult: (ok: Bool, text: String)?
     @State private var askRelaunch = false
     @State private var hibobToken = ""
+    @State private var volcToken = ""
     @State private var calendarURL = ""
     @State private var larkHook = ""
     @State private var larkSecret = ""
@@ -72,7 +73,7 @@ struct SettingsView: View {
             }
             Divider().opacity(0.5)
             HStack {
-                if s != loaded && loaded != nil || !apiKey.isEmpty || clearKey || !hibobToken.isEmpty || !calendarURL.isEmpty || !larkHook.isEmpty || !larkSecret.isEmpty {
+                if s != loaded && loaded != nil || !apiKey.isEmpty || clearKey || !hibobToken.isEmpty || !volcToken.isEmpty || !calendarURL.isEmpty || !larkHook.isEmpty || !larkSecret.isEmpty {
                     Label("有未保存的修改", systemImage: "circle.fill").font(.callout).foregroundStyle(.orange)
                         .labelStyle(DotLabel()).transition(.opacity)
                 }
@@ -164,10 +165,25 @@ struct SettingsView: View {
         group {
             row("实时识别方式", hint: "新识别器需要 macOS 26 及以上，更老的系统会自动用旧的听写识别") {
                 Picker("", selection: $s.speechEngine) {
-                    Text("系统新识别器（推荐）").tag("analyzer")
+                    Text("豆包流式识别（云端，最准）").tag("volc")
+                    Text("系统新识别器（本机）").tag("analyzer")
                     Text("旧的听写识别").tag("legacy")
                 }
-                .labelsHidden().frame(width: 180)
+                .labelsHidden().frame(width: 220)
+            }
+            if s.speechEngine == "volc" {
+                Divider()
+                row("火山引擎 App ID", hint: "火山引擎控制台 › 豆包语音 › 流式语音识别大模型") {
+                    box(TextField("", text: $s.volcAppId).textFieldStyle(.plain)).frame(width: 260)
+                }
+                Divider()
+                row("Access Token", hint: s.volcTokenHint.isEmpty ? "面试音频会上传到火山引擎识别，按时长计费" : L("当前：") + s.volcTokenHint) {
+                    box(SecureField("", text: $volcToken, prompt: Text(s.volcTokenHint.isEmpty ? "" : L("已保存，留空不修改"))).textFieldStyle(.plain)).frame(width: 260)
+                }
+                Divider()
+                row("资源 ID", hint: "小时版是 volc.bigasr.sauc.duration，并发版是 volc.bigasr.sauc.concurrent，2.0 模型是 volc.seedasr.sauc.duration") {
+                    box(TextField("", text: $s.volcResourceId).textFieldStyle(.plain)).frame(width: 260)
+                }
             }
             Divider()
             row("每题结束后用 Whisper 校正", hint: "切到下一题时，用本机 Whisper 把上一题重新识别一遍并替换逐字稿；音频只放在内存里") {
@@ -576,9 +592,10 @@ struct SettingsView: View {
             let v = try await backend.saveSettings({ var b = AppSettingsIn(s, apiKey: key, hibobToken: hibobToken.isEmpty ? nil : hibobToken)
                 b.calendarIcsUrl = calendarURL.isEmpty ? nil : calendarURL.trimmingCharacters(in: .whitespacesAndNewlines)
                 b.larkWebhook = larkHook.isEmpty ? nil : larkHook.trimmingCharacters(in: .whitespacesAndNewlines)
-                b.larkSecret = larkSecret.isEmpty ? nil : larkSecret.trimmingCharacters(in: .whitespacesAndNewlines); return b }())
+                b.larkSecret = larkSecret.isEmpty ? nil : larkSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+                b.volcToken = volcToken.isEmpty ? nil : volcToken.trimmingCharacters(in: .whitespacesAndNewlines); return b }())
             s = v; loaded = v
-            apiKey = ""; clearKey = false; hibobToken = ""; calendarURL = ""; larkHook = ""; larkSecret = ""
+            apiKey = ""; clearKey = false; hibobToken = ""; volcToken = ""; calendarURL = ""; larkHook = ""; larkSecret = ""
             Task { await store.reminder.refresh() }
             store.settings = v
             return true

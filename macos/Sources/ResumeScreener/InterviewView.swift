@@ -507,7 +507,8 @@ struct InterviewView: View {
             tr.corrector = st.aiTranscriptFix ? { qid, lines in try? await backend.fixTranscript(cid, questionId: qid, transcript: lines) } : nil
             startError = await tr.start(locale: st.speechLocale, silence: st.silenceSeconds, captureApp: st.captureApp,
                                          speechEngine: st.speechEngine, refine: st.whisperRefine, whisperModel: st.whisperModel,
-                                         hints: Array(hints.filter { !$0.isEmpty }.prefix(100)))
+                                         hints: Array(hints.filter { !$0.isEmpty }.prefix(100)),
+                                         volc: st.speechEngine == "volc" ? try? await backend.volcCredentials() : nil)
         }
     }
 

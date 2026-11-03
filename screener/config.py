@@ -32,6 +32,10 @@ DEFAULTS: dict = {
     "whisper_model": "openai_whisper-large-v3-v20240930_turbo",
     "speech_terms": "",         # 自己补充的识别术语，逗号或换行分隔
     "ai_transcript_fix": True,  # Whisper 校正后再用 AI 按术语表纠正专有名词
+    # 火山引擎「豆包流式语音识别大模型」（speech_engine = volc 时用）
+    "volc_app_id": "",
+    "volc_token": "",
+    "volc_resource_id": "volc.bigasr.sauc.duration",
     # 日历：Google 日历「iCal 格式的私密地址」；面试前多少分钟提醒
     "calendar_ics_url": "",
     # Lark 群自定义机器人：把面试评价发到群里

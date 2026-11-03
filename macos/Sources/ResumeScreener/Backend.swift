@@ -184,6 +184,12 @@ final class Backend: ObservableObject {
                        body: NoteBody(questionId: questionId, transcript: transcript)).note
     }
 
+    struct VolcCred: Decodable { var appId: String; var token: String; var resourceId: String }
+    func volcCredentials() async throws -> VolcChannel.Credentials {
+        let c = try await json(VolcCred.self, "speech/volc")
+        return .init(appId: c.appId, token: c.token, resourceId: c.resourceId)
+    }
+
     struct Terms: Decodable { var terms: [String] }
     func speechTerms(_ cid: String) async throws -> [String] { try await json(Terms.self, "candidates/\(cid)/speech-terms").terms }
 
