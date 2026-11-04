@@ -497,8 +497,8 @@ struct SettingsView: View {
                 }
             }
             Divider()
-            row("数据目录", hint: Backend.projectDir.appending(path: "data").path) {
-                Button("在访达中显示") { NSWorkspace.shared.open(Backend.projectDir.appending(path: "data")) }
+            row("数据目录", hint: Backend.dataDir.path) {
+                Button("在访达中显示") { NSWorkspace.shared.open(Backend.dataDir) }
             }
         }
     }
