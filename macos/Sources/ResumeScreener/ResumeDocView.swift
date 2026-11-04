@@ -53,22 +53,27 @@ struct OriginalResume: View {
     @State private var fileURL: URL?
     @State private var marks: [LineMark] = []
     @State private var flash = false
+    @AppStorage("resumeZoom") private var zoom: Double = 1      // 原文缩放，1 = 适应宽度
+    @GestureState private var pinch: CGFloat = 1
 
     var body: some View {
         Group {
             if let pages, !pages.isEmpty {
                 GeometryReader { g in
-                    let w = min(g.size.width - 56, 780)
+                    let w = min(g.size.width - 56, 780) * CGFloat(zoom) * pinch
                     ScrollViewReader { proxy in
-                        ScrollView {
+                        ScrollView(zoom * pinch > 1.01 ? [.horizontal, .vertical] : .vertical) {
                             VStack(spacing: 18) {
                                 ForEach(Array(pages.enumerated()), id: \.offset) { i, p in
                                     page(i + 1, p, width: w)
                                 }
                             }
-                            .padding(.vertical, 20)
-                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 20).padding(.horizontal, 28)
+                            .frame(minWidth: g.size.width)
                         }
+                        .gesture(MagnifyGesture().updating($pinch) { v, st, _ in st = v.magnification }
+                            .onEnded { v in zoom = Self.clamp(zoom * v.magnification) })
+                        .overlay(alignment: .bottomTrailing) { zoomBar.padding(14) }
                         .onChange(of: marks) {
                             guard !marks.isEmpty else { return }
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
@@ -93,6 +98,24 @@ struct OriginalResume: View {
             guard !store.resumeMarks.isEmpty else { marks = []; return }
             marks = (try? await backend.locate(cid, lines: store.resumeMarks)) ?? []
         }
+    }
+
+    static func clamp(_ z: Double) -> Double { min(max(z, 0.6), 3) }
+
+    var zoomBar: some View {
+        HStack(spacing: 2) {
+            Button { withAnimation(.snappy) { zoom = Self.clamp(zoom - 0.25) } } label: { Image(systemName: "minus").frame(width: 26, height: 26) }
+                .keyboardShortcut("-", modifiers: .command).help("缩小（⌘-）")
+            Button { withAnimation(.snappy) { zoom = 1 } } label: {
+                Text("\(Int((zoom * 100).rounded()))%").font(.caption.monospacedDigit()).frame(width: 44, height: 26)
+            }.help("适应宽度")
+            Button { withAnimation(.snappy) { zoom = Self.clamp(zoom + 0.25) } } label: { Image(systemName: "plus").frame(width: 26, height: 26) }
+                .keyboardShortcut("=", modifiers: .command).help("放大（⌘+）")
+        }
+        .buttonStyle(.plain).padding(3)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.black.opacity(0.08)))
+        .shadow(color: .black.opacity(0.1), radius: 8, y: 2)
     }
 
     func page(_ n: Int, _ p: PageSize, width w: CGFloat) -> some View {

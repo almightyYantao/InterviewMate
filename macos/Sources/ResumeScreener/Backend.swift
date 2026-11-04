@@ -18,6 +18,27 @@ final class Backend: ObservableObject {
         return FileManager.default.homeDirectoryForCurrentUser.appending(path: "Desktop/Private/resume-screener")
     }()
 
+    /// 安装包里自带的 Python 和后端代码（独立安装包）；开发时没有，走 uv
+    static let bundledPython: URL? = {
+        guard let r = Bundle.main.resourceURL else { return nil }
+        let py = r.appending(path: "python/bin/python3")
+        return FileManager.default.isExecutableFile(atPath: py.path) ? py : nil
+    }()
+
+    /// 数据目录：独立安装包放在 Application Support，开发时放在项目的 data 下
+    static let dataDir: URL = {
+        guard bundledPython != nil else { return projectDir.appending(path: "data") }
+        let d = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "InterviewMate/data")
+        // 第一次用安装包时，把开发版的数据搬过来
+        let old = projectDir.appending(path: "data")
+        if !FileManager.default.fileExists(atPath: d.path), FileManager.default.fileExists(atPath: old.appending(path: "screener.db").path) {
+            try? FileManager.default.createDirectory(at: d.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? FileManager.default.copyItem(at: old, to: d)
+        }
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d
+    }()
+
     private var stopping = false
 
     func start() {
@@ -25,13 +46,22 @@ final class Backend: ObservableObject {
         let port = Self.freePort()
         base = URL(string: "http://127.0.0.1:\(port)")!
         let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        p.arguments = ["-lc", "exec uv run uvicorn screener.web:app --host 127.0.0.1 --port \(port) --log-level warning"]
-        p.currentDirectoryURL = Self.projectDir
         var env = ProcessInfo.processInfo.environment
-        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:\(NSHomeDirectory())/.local/bin:" + (env["PATH"] ?? "/usr/bin:/bin")
+        if let py = Self.bundledPython, let res = Bundle.main.resourceURL {
+            p.executableURL = py
+            p.arguments = ["-m", "uvicorn", "screener.web:app", "--host", "127.0.0.1", "--port", "\(port)", "--log-level", "warning"]
+            p.currentDirectoryURL = res.appending(path: "backend")
+            env["PYTHONPATH"] = res.appending(path: "backend").path
+            env["PYTHONDONTWRITEBYTECODE"] = "1"
+            env["SCREENER_DATA"] = Self.dataDir.path
+        } else {
+            p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            p.arguments = ["-lc", "exec uv run uvicorn screener.web:app --host 127.0.0.1 --port \(port) --log-level warning"]
+            p.currentDirectoryURL = Self.projectDir
+            env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:\(NSHomeDirectory())/.local/bin:" + (env["PATH"] ?? "/usr/bin:/bin")
+        }
         p.environment = env
-        let logURL = Self.projectDir.appending(path: "data/app.log")
+        let logURL = Self.dataDir.appending(path: "app.log")
         try? FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         if !FileManager.default.fileExists(atPath: logURL.path) { FileManager.default.createFile(atPath: logURL.path, contents: nil) }
         if let h = try? FileHandle(forWritingTo: logURL) { h.seekToEndOfFile(); p.standardOutput = h; p.standardError = h }
@@ -182,6 +212,21 @@ final class Backend: ObservableObject {
     func questionNote(_ cid: String, questionId: String, transcript: [Utterance]) async throws -> String {
         try await json(NoteResult.self, "candidates/\(cid)/question-note", method: "POST",
                        body: NoteBody(questionId: questionId, transcript: transcript)).note
+    }
+
+    struct VolcCred: Decodable { var appId: String; var token: String; var resourceId: String }
+    func volcCredentials() async throws -> VolcChannel.Credentials {
+        let c = try await json(VolcCred.self, "speech/volc")
+        return .init(appId: c.appId, token: c.token, resourceId: c.resourceId)
+    }
+
+    struct Terms: Decodable { var terms: [String] }
+    func speechTerms(_ cid: String) async throws -> [String] { try await json(Terms.self, "candidates/\(cid)/speech-terms").terms }
+
+    struct FixResult: Decodable { var lines: [String] }
+    func fixTranscript(_ cid: String, questionId: String, transcript: [Utterance]) async throws -> [String] {
+        try await json(FixResult.self, "candidates/\(cid)/transcript-fix", method: "POST",
+                       body: NoteBody(questionId: questionId, transcript: transcript)).lines
     }
 
     func settings() async throws -> AppSettings { try await json(AppSettings.self, "settings") }

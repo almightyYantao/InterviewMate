@@ -42,6 +42,22 @@ struct ResumeScreenerApp: App {
                     .disabled(store.selectedPosition == nil)
             }
         }
+
+        // 面试单独一个窗口：可以拖到另一块屏幕、单独全屏
+        Window("面试", id: "interview") {
+            Group {
+                if let r = store.interviewReport { InterviewView(response: r) }
+                else { ContentUnavailableView("没有进行中的面试", systemImage: "person.wave.2") }
+            }
+            .environmentObject(backend)
+            .environmentObject(store)
+            .frame(minWidth: 1000, minHeight: 640)
+            .tint(Theme.brand)
+            .preferredColorScheme(.light)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1440, height: 900)
+        .windowBackgroundDragBehavior(.enabled)
     }
 }
 

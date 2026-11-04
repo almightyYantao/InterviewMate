@@ -8,6 +8,8 @@ struct InterviewView: View {
 
     let response: ReportResponse
     var questions: [Question] { response.report.questions }
+    /// 面试窗口独立于主窗口，候选人固定为开始面试时的那位
+    var cid: String { store.interviewCandidateID ?? store.selectedCandidateID ?? "" }
 
     @State private var index = 0
     @State private var scores: [String: String] = [:]
@@ -28,6 +30,9 @@ struct InterviewView: View {
     @State private var hintBusy = false
     @State private var hintedAt: [String: Int] = [:]        // 上次出提示时这道题有几句
     @State private var review: InterviewSummary?
+    @State private var showResume = false        // 右侧打开简历，面试中随时核对
+    @AppStorage("interviewResumeWidth") private var resumeWidth: Double = 520
+    @State private var dragStart: Double?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -49,7 +54,9 @@ struct InterviewView: View {
                     TranscriptPane(tr: tr, questionId: questions[index].id, hint: hints[questions[index].id], hintBusy: hintBusy) { refreshHint(force: true) }
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
+                if showResume { resumePane }
             }
+            .animation(.spring(response: 0.38, dampingFraction: 0.88), value: showResume)
             .animation(.spring(response: 0.38, dampingFraction: 0.88), value: tr.running)
         }
         .overlay(alignment: .top) {
@@ -61,7 +68,7 @@ struct InterviewView: View {
                     .padding(.top, 76).transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .frame(width: 1180, height: 780)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)   // 独立窗口，跟着窗口大小走
         .background(Color.white)
         .tint(Theme.brand)
         .onAppear {
@@ -123,10 +130,14 @@ struct InterviewView: View {
                     }
                 }
             }
+            // 面试窗口里也能直接进会，不用切回主窗口
+            if let e = store.nextEvent(cid) { MeetingButton(e: e) }
+            PillButton(title: showResume ? "收起简历" : "简历", symbol: "doc.text") { showResume.toggle() }
+                .keyboardShortcut("r", modifiers: .command).help("打开简历核对信息（⌘R）")
             PillButton(title: "退出", symbol: "xmark") {
                 tr.stop()
                 // 先关窗口，保存放后台做，不让人等网络
-                let cid = store.selectedCandidateID ?? "", note = overall, hasReview = review != nil, tr = tr
+                let note = overall, hasReview = review != nil, tr = tr
                 if !note.isEmpty { store.report?.overallNote = note }
                 dismiss()
                 Task {
@@ -142,6 +153,21 @@ struct InterviewView: View {
             }
         }
         .padding(.horizontal, 22).padding(.vertical, 14)
+    }
+
+    /// 面试中随时核对简历
+    @ViewBuilder var resumePane: some View {
+        // 左边缘可拖动调宽
+        Rectangle().fill(Color.black.opacity(0.06)).frame(width: 1)
+            .overlay(Color.clear.frame(width: 10).contentShape(Rectangle())
+                .onHover { $0 ? NSCursor.resizeLeftRight.push() : NSCursor.pop() }
+                .gesture(DragGesture(minimumDistance: 1).onChanged { v in
+                    let s = dragStart ?? resumeWidth; dragStart = s
+                    resumeWidth = min(max(s - v.translation.width, 360), 1100)
+                }.onEnded { _ in dragStart = nil }))
+        ResumeDocView(cid: cid, resume: response.report.resume)
+            .frame(width: resumeWidth).background(Theme.page)
+            .transition(.move(edge: .trailing).combined(with: .opacity))
     }
 
     // MARK: 左侧题目导航
@@ -379,7 +405,6 @@ struct InterviewView: View {
         Task {
             await saveScores()
             do {
-                let cid = store.selectedCandidateID ?? ""
                 if tr.utterances.isEmpty {
                     let e = try await backend.evaluate(cid, note: overall)
                     withAnimation(.spring(response: 0.4)) { evaluation = e }
@@ -406,7 +431,7 @@ struct InterviewView: View {
         guard scores[qid] != "skip", (notes[qid] ?? "").isEmpty, !noting.contains(qid), lines.contains(where: { $0.speaker == "candidate" }) || lines.count >= 2 else { return }
         noting.insert(qid)
         Task {
-            if let n = try? await backend.questionNote(store.selectedCandidateID ?? "", questionId: qid, transcript: lines),
+            if let n = try? await backend.questionNote(cid, questionId: qid, transcript: lines),
                !n.isEmpty, (notes[qid] ?? "").isEmpty {
                 withAnimation { notes[qid] = n }
                 await saveScores()
@@ -463,7 +488,7 @@ struct InterviewView: View {
         hintedAt[qid] = lines.count
         Task {
             defer { hintBusy = false }
-            if let h = try? await backend.liveHint(store.selectedCandidateID ?? "", questionId: qid, transcript: lines) {
+            if let h = try? await backend.liveHint(cid, questionId: qid, transcript: lines) {
                 withAnimation(.spring(response: 0.35)) { hints[qid] = h }
             }
         }
@@ -473,11 +498,17 @@ struct InterviewView: View {
         Task {
             let st = store.settings ?? AppSettings()
             // 职位名和题目关联的要求当热词，提高专有名词识别率
-            var hints = [response.report.position]
-            for q in questions { for r in q.linkedRequirements where r.count <= 20 && !hints.contains(r) { hints.append(r) } }
+            // 术语表：自定义词 + 报告里的英文 / 技术词 + 内置网络术语，当热词和 Whisper 提示词
+            var hints = (try? await backend.speechTerms(cid)) ?? []
+            if hints.isEmpty {
+                hints = [response.report.position]
+                for q in questions { for r in q.linkedRequirements where r.count <= 20 && !hints.contains(r) { hints.append(r) } }
+            }
+            tr.corrector = st.aiTranscriptFix ? { qid, lines in try? await backend.fixTranscript(cid, questionId: qid, transcript: lines) } : nil
             startError = await tr.start(locale: st.speechLocale, silence: st.silenceSeconds, captureApp: st.captureApp,
                                          speechEngine: st.speechEngine, refine: st.whisperRefine, whisperModel: st.whisperModel,
-                                         hints: Array(hints.filter { !$0.isEmpty }.prefix(40)))
+                                         hints: Array(hints.filter { !$0.isEmpty }.prefix(100)),
+                                         volc: st.speechEngine == "volc" ? try? await backend.volcCredentials() : nil)
         }
     }
 
@@ -628,15 +659,15 @@ struct TimeChip: View {
                     .stroke(over ? Color.red : Theme.brand, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                     .rotationEffect(.degrees(-90))
             }
-            .frame(width: 18, height: 18)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(L(title)).font(.caption2).foregroundStyle(.secondary)
-                Text(String(format: "%02d:%02d", seconds / 60, seconds % 60))
-                    .font(.system(size: 14, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(over ? .red : .primary)
-            }
+            .frame(width: 14, height: 14)
+            // 单行，和旁边的按钮一样高
+            Text(L(title)).font(.caption).foregroundStyle(.secondary)
+            Text(String(format: "%02d:%02d", seconds / 60, seconds % 60))
+                .font(.callout.weight(.semibold).monospacedDigit())
+                .foregroundStyle(over ? .red : .primary)
         }
-        .padding(.horizontal, 12).padding(.vertical, 6)
+        .fixedSize()
+        .padding(.horizontal, 14).padding(.vertical, 7)
         .background(over ? Color.red.opacity(0.08) : Theme.page, in: Capsule())
     }
 }

@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct MainView: View {
     @EnvironmentObject var store: Store
     @State private var columns = NavigationSplitViewVisibility.all
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         HStack(spacing: 0) {
@@ -24,8 +25,12 @@ struct MainView: View {
         .sheet(isPresented: $store.showNewPosition) { PositionEditor(position: nil) }
         .sheet(isPresented: $store.showSettings) { SettingsView() }
         .sheet(item: $store.editingPosition) { PositionEditor(position: $0) }
-        .sheet(isPresented: $store.interviewing) {
-            if let r = store.report { InterviewView(response: r) }
+        // 开始面试：打开独立的面试窗口，可以拖到另一块屏幕或全屏
+        .onChange(of: store.interviewing) {
+            guard store.interviewing, let r = store.report else { return }
+            store.interviewReport = r; store.interviewCandidateID = store.selectedCandidateID
+            openWindow(id: "interview")
+            store.interviewing = false
         }
         .alert("删除岗位「\(store.deletingPosition?.title ?? "")」？",
                isPresented: Binding(get: { store.deletingPosition != nil }, set: { if !$0 { store.deletingPosition = nil } }),

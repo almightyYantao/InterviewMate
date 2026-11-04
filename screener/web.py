@@ -15,7 +15,7 @@ from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadF
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
-from . import calendar_ics, config, lark, evaluation, hibob, hibob_mcp, llm, render_html, snippet, parsing, pipeline, render, store
+from . import calendar_ics, config, glossary, lark, evaluation, hibob, hibob_mcp, llm, render_html, snippet, parsing, pipeline, render, store
 from .schemas import JDStruct, Report
 
 app = FastAPI(title="简历筛选与面试题生成")
@@ -676,6 +676,22 @@ class NoteIn(BaseModel):
     transcript: list[Utterance]
 
 
+@app.get("/candidates/{cid}/speech-terms")
+def speech_terms(cid: str):
+    """给语音识别用的术语表（热词 / Whisper 提示词）"""
+    rep = store.latest_report(conn(), cid)
+    if not rep:
+        return {"terms": glossary.custom() + glossary.NETWORK}
+    return {"terms": glossary.for_report(Report.model_validate_json(rep["body"]))}
+
+
+@app.post("/candidates/{cid}/transcript-fix")
+def transcript_fix(cid: str, body: NoteIn):
+    rep = Report.model_validate_json(_report_row(conn(), cid)["body"])
+    return {"lines": evaluation.fix_transcript(rep, body.question_id, [u.model_dump() for u in body.transcript],
+                                               glossary.for_report(rep))}
+
+
 @app.post("/candidates/{cid}/question-note")
 def make_question_note(cid: str, body: NoteIn):
     rep = _report_row(conn(), cid)
@@ -688,6 +704,8 @@ def _settings_out() -> dict:
     s = config.get()
     k = s.pop("api_key") or ""
     t = s.pop("hibob_token") or ""
+    vt = s.pop("volc_token") or ""
+    s["volc_token_hint"] = ("…" + vt[-4:]) if vt else ""
     cal = s.pop("calendar_ics_url") or ""
     hook = s.pop("lark_webhook") or ""
     s.pop("lark_secret", None)
@@ -696,6 +714,13 @@ def _settings_out() -> dict:
     s.pop("hibob_oauth", None)
     return {**s, "api_key_hint": (k[:7] + "…" + k[-4:]) if k else "", "hibob_token_hint": ("…" + t[-4:]) if t else "",
             "default_fast": llm.SONNET, "default_strong": llm.OPUS}
+
+
+@app.get("/speech/volc")
+def volc_credentials():
+    """转写时取豆包识别的凭据（后端只监听本机）"""
+    s = config.get()
+    return {"app_id": s["volc_app_id"], "token": s["volc_token"], "resource_id": s["volc_resource_id"]}
 
 
 @app.get("/settings")

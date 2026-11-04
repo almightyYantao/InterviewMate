@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 
 from .llm import OPUS, SONNET, call_structured, prompt
-from .schemas import Evaluation, CompareResult, InterviewSummary, LiveHint, QuestionNote, Report
+from .schemas import Evaluation, CompareResult, InterviewSummary, LiveHint, QuestionNote, Report, TranscriptFix
 
 LABEL = {"excellent": "优秀", "pass": "合格", "fail": "不合格", "skip": "跳过（没问）"}
 
@@ -61,6 +61,24 @@ def question_note(report: Report, question_id: str, transcript: list[dict]) -> s
             f"红旗信号：{json.dumps(q.red_flags, ensure_ascii=False)}\n</question>\n<transcript>\n{lines}\n</transcript>")
     return call_structured(stage="question_note", model=SONNET, system=prompt("question_note"), user=user,
                            schema=QuestionNote, effort="low", max_tokens=4000).note
+
+
+def fix_transcript(report: Report, question_id: str, transcript: list[dict], terms: list[str]) -> list[str]:
+    """按术语表纠正转写里听错的专有名词；返回和输入一一对应的文字，失败或条数不对时原样返回"""
+    texts = [u.get("text", "") for u in transcript]
+    if not texts:
+        return texts
+    q = next((x for x in report.questions if x.id == question_id), None)
+    who = {"me": "面试官", "candidate": "候选人"}
+    lines = "\n".join(f"{i + 1}. {who.get(u.get('speaker'), '候选人')}：{u.get('text', '')}" for i, u in enumerate(transcript))
+    user = (f"<terms>\n{'、'.join(terms)}\n</terms>\n<question>\n{q.question if q else report.position}\n</question>\n"
+            f"<transcript>\n{lines}\n</transcript>")
+    try:
+        out = call_structured(stage="transcript_fix", model=SONNET, system=prompt("transcript_fix"), user=user,
+                              schema=TranscriptFix, effort="low", max_tokens=8000, json_mode=True).lines
+    except Exception:
+        return texts
+    return [o.strip() or t for o, t in zip(out, texts)] if len(out) == len(texts) else texts
 
 
 def live_hint(report: Report, question_id: str, transcript: list[dict]) -> LiveHint:

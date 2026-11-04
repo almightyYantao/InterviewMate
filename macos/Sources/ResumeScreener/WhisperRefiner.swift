@@ -86,7 +86,7 @@ actor WhisperEngine {
         let k = try await load(model)
         var tokens: [Int]?
         if let tz = k.tokenizer, !prompt.isEmpty {
-            tokens = Array(tz.encode(text: " " + prompt).filter { $0 < tz.specialTokens.specialTokenBegin }.suffix(200))
+            tokens = Array(tz.encode(text: " " + prompt).filter { $0 < tz.specialTokens.specialTokenBegin }.prefix(200))
         }
         let opts = DecodingOptions(language: language, temperature: 0, usePrefillPrompt: true, detectLanguage: false,
                                    skipSpecialTokens: true, withoutTimestamps: false, promptTokens: tokens,

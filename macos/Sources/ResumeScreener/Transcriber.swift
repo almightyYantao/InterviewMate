@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 import ScreenCaptureKit
 import Speech
 import SwiftUI
@@ -146,12 +147,15 @@ final class Transcriber: ObservableObject {
     private var refineCfg: (model: String, language: String, prompt: String)?
     private var segStart: Double = 0                // 当前这道题从第几秒开始录
     private var refineTasks: [Task<Void, Never>] = []
+    /// 一道题识别完后按术语表纠正专有名词：传入题目和这道题的逐字稿，返回一一对应的新文字
+    var corrector: ((String, [Utterance]) async -> [String]?)?
 
     private let engine = AVAudioEngine()
     private var mic: SpeechSink?
     private var sys: SpeechSink?
     private var stream: SCStream?
     private let output = SystemAudioOutput()
+    private var micCapture: MicCapture?
     private var t0 = Date()
 
     /// 面试官按快捷键打的标记，放进逐字稿，生成总结时会重点看
@@ -163,7 +167,7 @@ final class Transcriber: ObservableObject {
 
     func start(locale code: String = "zh-CN", silence: Double = 1.5, captureApp: String = "",
                speechEngine: String = "analyzer", refine: Bool = false, whisperModel: String = "",
-               hints: [String] = []) async -> String? {
+               hints: [String] = [], volc: VolcChannel.Credentials? = nil) async -> String? {
         starting = true
         defer { starting = false }
         let auth = await withCheckedContinuation { c in SFSpeechRecognizer.requestAuthorization { c.resume(returning: $0) } }
@@ -174,7 +178,14 @@ final class Transcriber: ObservableObject {
         let locale = Locale(identifier: code)
         let name = Locale.current.localizedString(forIdentifier: code) ?? code
         var m: SpeechSink, s: SpeechSink
-        if #available(macOS 26, *), speechEngine == "analyzer", SpeechTranscriber.isAvailable {
+        var refine = refine
+        if speechEngine == "volc" {
+            guard let volc, !volc.appId.isEmpty, !volc.token.isEmpty else {
+                return L("还没填豆包识别的 App ID 和 Access Token：请在「设置 › 语音转写」里填写。")
+            }
+            m = VolcChannel(credentials: volc, hints: hints); s = VolcChannel(credentials: volc, hints: hints)
+            refine = false          // 云端识别已经够准，不用再拿 Whisper 重识别
+        } else if #available(macOS 26, *), speechEngine == "analyzer", SpeechTranscriber.isAvailable {
             // 新识别器：长音频模型、整场不切段；模型没装会自动下载
             let l: Locale?
             do { l = try await AnalyzerChannel.prepare(locale: locale) } catch {
@@ -199,7 +210,7 @@ final class Transcriber: ObservableObject {
         segStart = 0
         utterances = []
         if refine && !whisperModel.isEmpty {
-            let lead = code == "zh-CN" ? "以下是普通话的面试对话，使用简体中文和标点。" : ""
+            let lead = code == "zh-CN" ? "以下是普通话的网络技术面试，中英混说，英文术语保留英文写法，使用简体中文和标点。常用术语：" : ""
             refineCfg = (whisperModel, WhisperEngine.language(code), lead + hints.joined(separator: "、"))
             recMe = AudioRecorder(); recCand = AudioRecorder()
             Task.detached { await WhisperEngine.shared.warmUp(whisperModel) }
@@ -213,9 +224,15 @@ final class Transcriber: ObservableObject {
         m.start(); s.start()
 
         do {
-            try Self.installTap(engine, channel: m, recorder: rm)
-            engine.prepare()
-            try engine.start()
+            if let cap = MicCapture(channel: m, recorder: rm) {
+                // 固定用 Mac 自带麦克风：不占用蓝牙耳机的麦克风，耳机就不会被切到通话模式（单声道、低采样率）
+                micCapture = cap
+                cap.start()
+            } else {
+                try Self.installTap(engine, channel: m, recorder: rm)
+                engine.prepare()
+                try engine.start()
+            }
         } catch {
             stop()
             return L("麦克风启动失败：") + error.localizedDescription
@@ -268,8 +285,11 @@ final class Transcriber: ObservableObject {
     }
 
     func stop() {
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+        micCapture?.stop(); micCapture = nil
+        if engine.isRunning {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+        }
         mic?.stop(); sys?.stop()
         mic = nil; sys = nil
         output.channel = nil
@@ -291,14 +311,16 @@ final class Transcriber: ObservableObject {
     private func cut(_ qid: String) {
         let from = segStart
         segStart = Date().timeIntervalSince(t0)
-        guard !qid.isEmpty, let cfg = refineCfg else { return }
-        let jobs: [(String, [Float])] = [("me", recMe?.take()), ("candidate", recCand?.take())]
+        guard !qid.isEmpty else { return }
+        let cfg = refineCfg
+        let jobs: [(String, [Float])] = cfg == nil ? [] : [("me", recMe?.take()), ("candidate", recCand?.take())]
             .compactMap { sp, a in a.map { (sp, $0) } }
             .filter { $0.1.count > Int(AudioRecorder.rate) }    // 不到 1 秒不处理
-        guard !jobs.isEmpty else { return }
+        guard !jobs.isEmpty || (corrector != nil && utterances.contains { $0.questionId == qid }) else { return }
         refining.insert(qid)
         refineTasks.append(Task { [weak self] in
             for (speaker, audio) in jobs {
+                guard let cfg else { break }
                 do {
                     let segs = try await WhisperEngine.shared.transcribe(audio, model: cfg.model, language: cfg.language, prompt: cfg.prompt)
                     self?.replace(qid, speaker, from: from, until: from + Double(audio.count) / AudioRecorder.rate, segs)
@@ -307,13 +329,29 @@ final class Transcriber: ObservableObject {
                     self?.warning = L("Whisper 重新识别失败，这道题保留实时识别的结果：") + error.localizedDescription
                 }
             }
+            await self?.correct(qid)
             self?.refining.remove(qid)
         })
+    }
+
+    private func correct(_ qid: String) async {
+        guard let corrector else { return }
+        let lines = utterances.filter { $0.questionId == qid && ($0.speaker == "me" || $0.speaker == "candidate") }
+        guard !lines.isEmpty, let out = await corrector(qid, lines), out.count == lines.count else { return }
+        let fixed = Dictionary(uniqueKeysWithValues: zip(lines.map(\.id), out))
+        for i in utterances.indices { if let t = fixed[utterances[i].id], !t.isEmpty { utterances[i].text = t } }
     }
 
     private func replace(_ qid: String, _ speaker: String, from: Double, until: Double, _ segs: [(start: Double, text: String)]) {
         guard !segs.isEmpty else { return }       // Whisper 没听出东西就保留实时结果
         // 实时结果是整句说完才记时间，往后放宽几秒
+        let old = utterances.filter { $0.questionId == qid && $0.speaker == speaker && $0.at >= from - 1 && $0.at <= until + 5 }
+        // Whisper 遇到没把握的片段会整段跳过：结果明显比实时字幕短时，说明丢了内容，保留实时字幕
+        let oldLen = old.reduce(0) { $0 + $1.text.count }, newLen = segs.reduce(0) { $0 + $1.text.count }
+        if oldLen > 20 && Double(newLen) < Double(oldLen) * 0.6 {
+            NSLog("whisper result too short (\(newLen) vs \(oldLen)), keep live transcript")
+            return
+        }
         utterances.removeAll { $0.questionId == qid && $0.speaker == speaker && $0.at >= from - 1 && $0.at <= until + 5 }
         utterances += segs.map { Utterance(speaker: speaker, text: $0.text, questionId: qid, at: from + $0.start) }
         utterances.sort { $0.at < $1.at }
@@ -326,8 +364,13 @@ final class Transcriber: ObservableObject {
         c.onFinal = { [weak self] text in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.utterances.append(Utterance(speaker: speaker, text: text, questionId: self.currentQuestion,
-                                                 at: Date().timeIntervalSince(self.t0)))
+                let now = Date().timeIntervalSince(self.t0)
+                // 麦克风串进了候选人的声音：两路 15 秒内说的话几乎一样，以候选人那一路为准
+                let other = speaker == "me" ? "candidate" : "me"
+                let echo = { (u: Utterance) in u.speaker == other && now - u.at < 15 && Self.similar(u.text, text) }
+                if speaker == "me", self.utterances.contains(where: echo) { return }
+                if speaker == "candidate" { self.utterances.removeAll(where: echo) }
+                self.utterances.append(Utterance(speaker: speaker, text: text, questionId: self.currentQuestion, at: now))
             }
         }
         c.onFatal = { [weak self] e in
@@ -342,11 +385,57 @@ final class Transcriber: ObservableObject {
         }
     }
 
+    /// 两句话的字重合度（二元组），用来认出麦克风串音
+    nonisolated static func similar(_ a: String, _ b: String) -> Bool {
+        func grams(_ s: String) -> Set<String> {
+            let c = Array(s.filter { !$0.isPunctuation && !$0.isWhitespace })
+            return c.count < 2 ? Set(c.map(String.init)) : Set((0..<c.count - 1).map { String(c[$0...$0 + 1]) })
+        }
+        let x = grams(a), y = grams(b)
+        guard min(x.count, y.count) >= 3 else { return false }
+        return Double(x.intersection(y).count) / Double(min(x.count, y.count)) > 0.6
+    }
+
     /// 放在非隔离的静态方法里，避免音频线程上的回调被当成主线程闭包检查
     nonisolated private static func installTap(_ engine: AVAudioEngine, channel: SpeechSink, recorder: AudioRecorder?) throws {
         let input = engine.inputNode
+        // 不开系统回声消除：它会另建音频链路，蓝牙耳机下和会议软件的进程监听冲突，候选人那一路收不到声音。
+        // 外放串音靠 onFinal 里的文字去重处理
         let fmt = input.outputFormat(forBus: 0)
         guard fmt.sampleRate > 0 else { throw NSError(domain: "screener", code: 2, userInfo: [NSLocalizedDescriptionKey: L("没有可用的麦克风")]) }
         input.installTap(onBus: 0, bufferSize: 4096, format: fmt) { buf, _ in channel.append(buf); recorder?.append(buf) }
+    }
+}
+
+/// 用 AVCaptureSession 采 Mac 自带麦克风（不经过系统默认输入设备）
+final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, @unchecked Sendable {
+    private let session = AVCaptureSession()
+    private let queue = DispatchQueue(label: "screener.mic")
+    private let channel: SpeechSink
+    private let recorder: AudioRecorder?
+
+    init?(channel: SpeechSink, recorder: AudioRecorder?) {
+        let found = AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone], mediaType: .audio, position: .unspecified)
+            .devices.first { $0.transportType == Int32(bitPattern: kAudioDeviceTransportTypeBuiltIn) }
+        guard let dev = found, let input = try? AVCaptureDeviceInput(device: dev) else { return nil }
+        self.channel = channel
+        self.recorder = recorder
+        super.init()
+        let out = AVCaptureAudioDataOutput()
+        session.beginConfiguration()
+        guard session.canAddInput(input), session.canAddOutput(out) else { session.commitConfiguration(); return nil }
+        session.addInput(input)
+        session.addOutput(out)
+        session.commitConfiguration()
+        out.setSampleBufferDelegate(self, queue: queue)
+    }
+
+    func start() { queue.async { self.session.startRunning() } }
+    func stop() { queue.async { self.session.stopRunning() } }
+
+    func captureOutput(_ output: AVCaptureOutput, didOutput sb: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard let buf = pcmBuffer(from: sb) else { return }
+        channel.append(buf)
+        recorder?.append(buf)
     }
 }
