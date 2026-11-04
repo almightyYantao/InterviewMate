@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
@@ -16,7 +17,7 @@ from .schemas import (
     Question, QuestionSet, Report, ResumeStruct, SECTION_ORDER,
 )
 
-CACHE_DIR = Path(__file__).resolve().parent.parent / ".cache" / "jd"
+CACHE_DIR = (Path(os.environ["SCREENER_DATA"]) / "cache" / "jd") if os.getenv("SCREENER_DATA") else Path(__file__).resolve().parent.parent / ".cache" / "jd"
 
 DEFAULT_CONTEXT = ""   # 公司环境描述在「设置」里填，见 config.company_ctx
 
