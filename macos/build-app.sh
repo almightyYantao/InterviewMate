@@ -53,7 +53,7 @@ touch "$APP"
 # 证书在 .sign-identity 里配置（证书名或 SHA-1），没有就退回临时签名。
 IDENTITY="$(cat .sign-identity 2>/dev/null || echo -)"
 # 先签里面的 Python 二进制和动态库，再签整个 App
-sign() { codesign --force --timestamp=none --options runtime --sign "$IDENTITY" "$@" >/dev/null 2>&1 || codesign --force --sign - "$@" >/dev/null 2>&1 || true; }
+sign() { codesign --force --timestamp=none --sign "$IDENTITY" "$@" >/dev/null 2>&1 || codesign --force --sign - "$@" >/dev/null 2>&1 || true; }
 find "$APP/Contents/Resources/python" -type f \( -name "*.so" -o -name "*.dylib" -o -perm -u+x \) -print0 | while IFS= read -r -d '' f; do
   file "$f" | grep -q Mach-O && sign "$f"
 done
