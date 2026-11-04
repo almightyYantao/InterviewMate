@@ -249,6 +249,10 @@ class QuestionNote(BaseModel):
     note: str = Field(description="面试官备注口吻的本题表现总结，80 字以内")
 
 
+class OcrResult(BaseModel):
+    lines: list[str] = Field(description="简历原文，按阅读顺序一行一项")
+
+
 class LiveHint(BaseModel):
     covered: list[str]
     missing: list[str]
